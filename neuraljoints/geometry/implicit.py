@@ -13,7 +13,8 @@ class Implicit(Entity, ABC):
         self.transform = transform if transform is not None else Transform()
 
     def __call__(self, position, value='value'):
-        position = self.transform(position)
+        if self.transform is not None:
+            position = self.transform(position)
         if value == 'value':
             return self.forward(position)
         if value == 'fx':
@@ -67,7 +68,13 @@ class Cube(SDF):
         return np.where.norm(d > 0) + 1
 
 
-class SDFToUDF(Implicit):
+class ImplicitProxy(Implicit, ABC):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.transform = None
+
+
+class SDFToUDF(ImplicitProxy):
     def __init__(self, sdf: SDF, **kwargs):
         super().__init__(**kwargs)
         self.sdf = sdf
@@ -79,8 +86,7 @@ class SDFToUDF(Implicit):
         raise NotImplementedError()
 
 
-class ParametricToImplicitBrute(Implicit):
-
+class ParametricToImplicitBrute(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
         super().__init__(**kwargs)
         self.parametric = parametric

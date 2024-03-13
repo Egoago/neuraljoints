@@ -12,7 +12,8 @@ if __name__ == "__main__":
 
     implicits = [# RoundUnion(children=[Sphere(), Cube()]),
                  Union(children=[SDFToUDF(Sphere()),ParametricToImplicitBrute(CubicBezier())]),
-                 ParametricToImplicitBrute(CubicBezier())]
+                 #ParametricToImplicitBrute(CubicBezier()),
+                ]
 
     #implicits[0].children[0].transform.translation._value = np.array([0.8, 0, 0])
     #implicits[0].children[1].transform.translation._value = np.array([-0.8, 0, 0])

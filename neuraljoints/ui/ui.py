@@ -2,15 +2,10 @@ import numpy as np
 from polyscope import imgui
 import polyscope as ps
 
-from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
-from neuraljoints.geometry.implicit import Implicit, ParametricToImplicitBrute
-from neuraljoints.geometry.parametric import Parametric
 from neuraljoints.ui.drawable import Drawable
 from neuraljoints.ui.io import IOHandler
-from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper, AggregateWrapper, \
-    ParametricToImplicitBruteWrapper
-from neuraljoints.ui.wrappers.parametric_wrapper import ParametricWrapper
+from neuraljoints.ui.wrappers import get_wrapper
 
 
 class UIHandler:
@@ -40,19 +35,12 @@ class UIHandler:
 
     @classmethod
     def add_entity(cls, entity: Entity):    #TODO refactor
-        if isinstance(entity, Aggregate):
-            cls.drawables.append(AggregateWrapper(entity))
-        elif isinstance(entity, ParametricToImplicitBrute):
-            cls.drawables.append(ParametricToImplicitBruteWrapper(entity))
-        elif isinstance(entity, Parametric):
-            cls.drawables.append(ParametricWrapper(entity))
-        elif isinstance(entity, Implicit):
-            cls.drawables.append(ImplicitWrapper(entity))
+        cls.drawables.append(get_wrapper(entity))
 
     @classmethod
     def update(cls):
-        io = imgui.GetIO()
         imgui.PushFont(cls.font)
+        io = imgui.GetIO()
         IOHandler.update(io)
 
         if imgui.SmallButton('Reset camera'):
@@ -63,6 +51,9 @@ class UIHandler:
 
         for drawable in cls.drawables:
             drawable.draw()
+            # drawable.draw_ui()
+            # if drawable.changed:
+            #     drawable.draw_geometry()
 
     @classmethod
     def __set_camera(cls):

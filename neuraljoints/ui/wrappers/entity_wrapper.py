@@ -1,24 +1,45 @@
-﻿from polyscope_bindings import imgui
+﻿import uuid
+from abc import ABC
+
+from polyscope_bindings import imgui
 
 from neuraljoints.geometry.base import Entity
 from neuraljoints.ui.wrappers.parameter_wrapper import ParameterWrapper
 from neuraljoints.ui.wrappers.wrapper import Wrapper
 
 
-class EntityWrapper(Wrapper):
-    def __init__(self, entity: Entity):
+class EntityWrapper(Wrapper, ABC):
+    def __init__(self, entity: Entity, entity_wrappers=None):
         super().__init__()
         self.entity = entity
+        self.id = str(uuid.uuid4())
+        self.entity_wrappers = entity_wrappers if entity_wrappers is not None else []
 
-    def draw_params(self) -> bool:
-        changed = False
-        for parameter in self.entity.parameters:
-            changed = ParameterWrapper.draw(parameter) or changed
-        return changed
+    def draw_entity_ui(self, entity: Entity):
+        if len(entity.parameters) > 0:
+            imgui.Separator()
+            imgui.Text(entity.name)
+            for parameter in entity.parameters:
+                self.changed = ParameterWrapper.draw(parameter) or self.changed
 
-    def draw(self) -> bool:
-        if len(self.entity.parameters) > 0:
+    def draw_ui(self):
+        imgui.PushId(self.id)
+        super().draw_ui()
+        parameters = self.entity.parameters
+        if len(self.entity_wrappers) > 0 or len(parameters) > 0:
             imgui.Separator()
             imgui.Text(self.entity.name)
-            return self.draw_params()
-        return False
+        for parameter in parameters:
+            self.changed = ParameterWrapper.draw(parameter) or self.changed
+        if len(self.entity_wrappers) > 0:
+            if len(self.entity_wrappers) == 1:
+                imgui.Indent(10)
+                self.entity_wrappers[0].draw_ui()
+                self.changed = self.entity_wrappers[0].changed or self.changed
+                imgui.Unindent(10)
+            elif imgui.TreeNode('entities'):
+                for entity_wrapper in self.entity_wrappers:
+                    entity_wrapper.draw_ui()
+                    self.changed = entity_wrapper.changed or self.changed
+                imgui.TreePop()
+        imgui.PopID()

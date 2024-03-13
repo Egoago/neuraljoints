@@ -10,30 +10,27 @@ from neuraljoints.utils.parameters import FloatParameter
 
 
 class ControlPointsWrapper(IOListener, EntityWrapper):
-    def __init__(self, control_points: ControlPoints):
-        super().__init__(entity=control_points)
-        self.startup = True
+    def __init__(self, control_points: ControlPoints, **kwargs):
+        super().__init__(entity=control_points, **kwargs)
         self.initial = np.copy(control_points.points)
-        self.entity.control_radius = FloatParameter('control point radius', value=0.05, min=0.03, max=0.1)
+        self.entity.control_radius = FloatParameter('control point radius', value=0.02, min=0.03, max=0.1)
         self.selected = None
-        self.changed = False
 
     @property
     def control_points(self) -> ControlPoints:
         return self.entity
 
-    def draw(self) -> bool:
-        self.changed = super().draw() or self.changed
+    def draw_ui(self):
+        changed = self.changed
+        super().draw_ui()
+        self.changed = changed or self.changed
         imgui.Text("points")
         imgui.SameLine()
         if imgui.SmallButton('reset'):
             self.changed = True
             self.control_points.points = self.initial
-        if self.changed or self.startup:
-            ps.register_point_cloud(self.control_points.name, self.control_points.points,
-                                    enabled=True, radius=self.entity.control_radius.value)
-        self.startup = False
-        return self.changed
+        ps.register_point_cloud(self.control_points.name, self.control_points.points,
+                                enabled=True, radius=self.entity.control_radius.value)
 
     def on_mouse_clicked(self, screen_coords, button):
         if button == imgui.ImGuiMouseButton_Left:

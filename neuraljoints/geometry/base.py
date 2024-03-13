@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 
 from neuraljoints.utils.parameters import Parameter
@@ -11,6 +13,15 @@ class Entity:
     @property
     def parameters(self):
         return [v for v in self.__dict__.values() if isinstance(v, Parameter)]
+
+    @property
+    def entities(self):
+        entities = [v for v in self.__dict__.values() if isinstance(v, Entity)]
+        # lists = [v for v in self.__dict__.values() if isinstance(v, List)]
+        # for list in lists:
+        #     if all(isinstance(item, Entity) for item in list):
+        #         entities += list
+        return entities
 
 
 class ControlPoints(Entity):

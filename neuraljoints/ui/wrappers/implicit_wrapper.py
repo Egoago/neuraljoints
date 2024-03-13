@@ -18,9 +18,8 @@ class ImplicitWrapper(EntityWrapper):
     bound_high = (2, 2, 0)
     _grid = None
 
-    def __init__(self, implicit: Implicit):
-        super().__init__(entity=implicit)
-        self.startup = True
+    def __init__(self, implicit: Implicit, **kwargs):
+        super().__init__(entity=implicit, **kwargs)
 
     @property
     def grid(self):
@@ -35,46 +34,22 @@ class ImplicitWrapper(EntityWrapper):
     def implicit(self) -> Implicit:
         return self.entity
 
-    def draw(self) -> bool:
-        changed = super().draw()
-        if changed or self.startup:
-            self.grid.add_scalar_quantity_from_callable(self.implicit.name, self.implicit,
-                                                        isolines_enabled=True, **self.scalar_args)
-        self.startup = False
-        return changed
+    def draw_geometry(self):
+        super().draw_geometry()
+        self.grid.add_scalar_quantity_from_callable(self.implicit.name, self.implicit,
+                                                    isolines_enabled=True, **self.scalar_args)
 
 
 class AggregateWrapper(ImplicitWrapper):
-    def __init__(self, implicit: Aggregate):
+    def __init__(self, implicit: Aggregate, children: [ImplicitWrapper], **kwargs):
         super().__init__(implicit)
-        self.children = [ImplicitWrapper(c) for c in implicit.children]
+        self.children = children
 
-    def draw(self) -> bool:
-        changed = EntityWrapper.draw(self)
+    def draw_ui(self):
+        super().draw_ui()
 
         if imgui.TreeNode('children'):
             for child in self.children:
-                changed = child.draw() or changed
+                child.draw_ui()
+                self.changed = child.changed or self.changed
             imgui.TreePop()
-
-        if changed or self.startup:
-            self.grid.add_scalar_quantity_from_callable(self.implicit.name, self.implicit,
-                                                        isolines_enabled=True, **self.scalar_args)
-        self.startup = False
-        return changed
-
-
-class ParametricToImplicitBruteWrapper(ImplicitWrapper):
-    def __init__(self, implicit: ParametricToImplicitBrute):
-        super().__init__(implicit)
-        self.parametric_wrapper = ParametricWrapper(implicit.parametric)
-
-    def draw(self) -> bool:
-        changed = EntityWrapper.draw(self)
-        changed = self.parametric_wrapper.draw() or changed
-
-        if changed or self.startup:
-            self.grid.add_scalar_quantity_from_callable(self.implicit.name, self.implicit,
-                                                        isolines_enabled=True, **self.scalar_args)
-        self.startup = False
-        return changed
