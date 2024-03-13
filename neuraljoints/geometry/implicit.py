@@ -2,28 +2,34 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from neuraljoints.utils.parameters import FloatParameter, Float3Parameter, Parameter
+from neuraljoints.geometry.base import Entity
+from neuraljoints.geometry.parametric import Parametric
+from neuraljoints.utils.parameters import FloatParameter, Transform, IntParameter
 
 
-class Implicit(ABC):
-    def __init__(self, name=None):
-        self.name = name if name is not None else self.__class__.__name__
-        self.translation = Float3Parameter(f'translation', np.zeros((3,)))
+class Implicit(Entity, ABC):
+    def __init__(self, transform: Transform = None, **kwargs):
+        super().__init__(**kwargs)
+        self.transform = transform if transform is not None else Transform()
 
-    def __call__(self, position):
-        position = position - self.translation.value
-        return self.forward(position)
+    def __call__(self, position, value='value'):
+        position = self.transform(position)
+        if value == 'value':
+            return self.forward(position)
+        if value == 'fx':
+            return self.gradient(position)[..., 0]
+        if value == 'fy':
+            return self.gradient(position)[..., 1]
+        if value == 'fz':
+            return self.gradient(position)[..., 2]
 
     @abstractmethod
     def forward(self, position):
         pass
 
-    def register_ui(self) -> bool:
-        changed = False
-        for attribute, value in self.__dict__.items():
-            if isinstance(value, Parameter):
-                changed = changed or value.register_ui()
-        return changed
+    @abstractmethod
+    def gradient(self, position):
+        pass
 
 
 class SDF(Implicit, ABC):
@@ -33,27 +39,57 @@ class SDF(Implicit, ABC):
 class Sphere(SDF):
     def __init__(self, radius=1., *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.radius = FloatParameter('radius', radius)
+        self.radius = FloatParameter('radius', radius, min=0, max=2)
 
-    def forward(self, position) -> float:
-        return np.sqrt(np.sum(position*position, -1)) - self.radius.value
+    def forward(self, position):
+        return np.linalg.norm(position, axis=-1) - self.radius.value
+
+    def gradient(self, position):
+        return position / np.linalg.norm(position, axis=-1, keepdims=True)
 
 
 class Cube(SDF):
     def __init__(self, size=1., *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.size = FloatParameter('size', size)
+        self.size = FloatParameter('size', size, min=0.01, max=2.)
 
     def forward(self, position):
         d = abs(position) - self.size.value
         return (np.linalg.norm(np.maximum(d, 0), axis=-1) +
                 np.minimum(np.max(d, axis=-1), 0))
 
+    def gradient(self, position):
+        d = abs(position) - self.size.value
+        outer = np.maximum(d, 0)
+        inner = np.minimum(d, 0)
+        zeros = np.zeros_like(position)
+        zeros[np.argmax(d, axis=-1)] = 1
+        return np.where.norm(d > 0) + 1
 
-class Union(SDF):
-    def __init__(self, children: list[SDF]):
-        super().__init__()
-        self.children = children
+
+class SDFToUDF(Implicit):
+    def __init__(self, sdf: SDF, **kwargs):
+        super().__init__(**kwargs)
+        self.sdf = sdf
 
     def forward(self, position):
-        return np.minimum.reduce(list(map(lambda c: c(position), self.children)))
+        return np.abs(self.sdf(position))
+
+    def gradient(self, position):
+        raise NotImplementedError()
+
+
+class ParametricToImplicitBrute(Implicit):
+
+    def __init__(self, parametric: Parametric, **kwargs):
+        super().__init__(**kwargs)
+        self.parametric = parametric
+        self.resolution = IntParameter('resolution', value=10, min=3, max=200)
+
+    def forward(self, position):
+        parameters = np.linspace(0., 1., self.resolution.value, dtype=np.float32)
+        points = self.parametric(parameters)
+        return np.linalg.norm(position[:, None, :] - points[None, ...], axis=-1).min(axis=-1)
+
+    def gradient(self, position):
+        raise NotImplementedError()

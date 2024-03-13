@@ -1,59 +1,42 @@
 import numpy as np
 import polyscope as ps
-from polyscope import imgui
 
-from neuraljoints.geometry.implicit import Sphere, Cube, Union
-
-
-def add_base_vectors():
-    # Define coordinate basis vectors
-    nodes = np.array([[0.0, 0.0, 0.0],
-                      [1.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0],
-                      [0.0, 0.0, 1.0]])
-    edges = np.array([[0, 1], [0, 2], [0, 3]])
-
-    # Register basis vectors as line segments
-    ps_net = ps.register_curve_network("Base", nodes, edges)
-    colors = np.array([[1, 0, 0],
-                       [0, 1, 0],
-                       [0, 0, 1]])
-    ps_net.add_color_quantity("color", colors, enabled=True, defined_on='edges')
-    ps_net.set_ignore_slice_plane(ps_plane, True)
+from neuraljoints.geometry.aggregate import RoundUnion, Union
+from neuraljoints.geometry.implicit import Sphere, Cube, SDFToUDF, ParametricToImplicitBrute
+from neuraljoints.geometry.parametric import CubicBezier
+from neuraljoints.ui.ui import UIHandler
 
 
 if __name__ == "__main__":
-    ps.init()
-    #ps.set_navigation_style("planar")
-    ps_plane = ps.add_scene_slice_plane()
-    ps_plane.set_pose((0, 0, 0.05), (0, 0, -1))
-    #ps_plane.set_draw_plane(True)
-    #ps_plane.set_draw_widget(True)
-    add_base_vectors()
+    UIHandler.init()
 
-    # define the resolution and bounds of the grid
-    cube = Cube()
-    dims = (100, 100, 100)
-    bound_low = (-2, -2, -2)
-    bound_high = (2, 2, 2)
+    implicits = [# RoundUnion(children=[Sphere(), Cube()]),
+                 Union(children=[SDFToUDF(Sphere()),ParametricToImplicitBrute(CubicBezier())]),
+                 ParametricToImplicitBrute(CubicBezier())]
 
-    # register the grid
-    ps_grid = ps.register_volume_grid("Grid", dims, bound_low, bound_high)
-    ps_grid.set_cull_whole_elements(False)
+    #implicits[0].children[0].transform.translation._value = np.array([0.8, 0, 0])
+    #implicits[0].children[1].transform.translation._value = np.array([-0.8, 0, 0])
+    #value = 0
+    UIHandler.add_entities(implicits)
 
-    implicits = [Cube(), Sphere()]
-    implicits.append(Union(implicits.copy()))
 
     def draw_ui():
-        scalar_args = {'datatype': 'symmetric', 'isolines_enabled': True,
-                       'enable_isosurface_viz': True, 'isosurface_color': (0.4, 0.6, 0.6)}
-        for implicit in implicits:
-            imgui.Text(implicit.name)
-            changed = implicit.register_ui()
-            imgui.Separator()
-
-            if changed:
-                ps_grid.add_scalar_quantity_from_callable(implicit.name, implicit, **scalar_args)
-
+        global value
+        # for implicit in implicits:
+        #     imgui.BeginGroup()
+        #
+        #     values = ['value', 'fx', 'fy', 'fz']
+        #     clicked, value = imgui.ListBox('value', 0, values)
+        #
+        #     def callback(p):
+        #         return implicit(p, value=values[value])
+        #
+        #     if changed or clicked or startup:
+        #         ps_grid.add_scalar_quantity_from_callable(implicit.name, callback,
+        #                                                   isolines_enabled=value == 0,
+        #                                                   **scalar_args)
+        #     imgui.EndGroup()
+        UIHandler.update()
     ps.set_user_callback(draw_ui)
+    ps.set_open_imgui_window_for_user_callback(False)
     ps.show()
