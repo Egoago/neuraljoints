@@ -84,18 +84,3 @@ class SDFToUDF(ImplicitProxy):
 
     def gradient(self, position):
         raise NotImplementedError()
-
-
-class ParametricToImplicitBrute(ImplicitProxy):
-    def __init__(self, parametric: Parametric, **kwargs):
-        super().__init__(**kwargs)
-        self.parametric = parametric
-        self.resolution = IntParameter('resolution', value=10, min=3, max=200)
-
-    def forward(self, position):
-        parameters = np.linspace(0., 1., self.resolution.value, dtype=np.float32)
-        points = self.parametric(parameters)
-        return np.linalg.norm(position[:, None, :] - points[None, ...], axis=-1).min(axis=-1)
-
-    def gradient(self, position):
-        raise NotImplementedError()

@@ -6,6 +6,7 @@ class Drawable:
         self.startup = True
 
     def draw(self):
+        self.__set_changed(False)
         self.draw_ui()
         for value in self.__dict__.values():
             if isinstance(value, Drawable):
@@ -20,3 +21,13 @@ class Drawable:
     def draw_ui(self):
         self.changed = self.startup
         self.startup = False
+
+    def __set_changed(self, changed):
+        self.changed = changed
+        for value in self.__dict__.values():
+            if isinstance(value, Drawable):
+                value.__set_changed(changed)
+            if isinstance(value, list):
+                for v in value:
+                    if isinstance(v, Drawable):
+                        v.__set_changed(changed)

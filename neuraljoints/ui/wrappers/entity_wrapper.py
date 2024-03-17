@@ -43,3 +43,8 @@ class EntityWrapper(Wrapper, ABC):
                     self.changed = entity_wrapper.changed or self.changed
                 imgui.TreePop()
         imgui.PopID()
+
+    def draw_geometry(self):
+        super().draw_geometry()
+        for entity_wrapper in self.entity_wrappers:
+            entity_wrapper.draw_geometry()

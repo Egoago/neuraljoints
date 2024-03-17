@@ -5,7 +5,8 @@ import polyscope as ps
 from neuraljoints.geometry.base import Entity
 from neuraljoints.ui.drawable import Drawable
 from neuraljoints.ui.io import IOHandler
-from neuraljoints.ui.wrappers import get_wrapper
+from neuraljoints.ui.wrappers import get_wrapper, ImplicitWrapper
+from neuraljoints.ui.wrappers.parameter_wrapper import ParameterWrapper
 
 
 class UIHandler:
@@ -49,11 +50,11 @@ class UIHandler:
         cls.show_origo = imgui.Checkbox('Show origo', cls.show_origo)[1]
         cls.__add_base_vectors()
 
+        imgui.Text('Grid')
+        ParameterWrapper.draw(ImplicitWrapper.RESOLUTION)
+
         for drawable in cls.drawables:
             drawable.draw()
-            # drawable.draw_ui()
-            # if drawable.changed:
-            #     drawable.draw_geometry()
 
     @classmethod
     def __set_camera(cls):

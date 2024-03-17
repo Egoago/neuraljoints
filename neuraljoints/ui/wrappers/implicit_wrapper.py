@@ -2,9 +2,9 @@ import polyscope as ps
 from polyscope import imgui
 
 from neuraljoints.geometry.aggregate import Aggregate
-from neuraljoints.geometry.implicit import Implicit, ParametricToImplicitBrute
+from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.ui.wrappers.entity_wrapper import EntityWrapper
-from neuraljoints.ui.wrappers.parametric_wrapper import ParametricWrapper
+from neuraljoints.utils.parameters import IntParameter
 
 
 class ImplicitWrapper(EntityWrapper):
@@ -12,7 +12,8 @@ class ImplicitWrapper(EntityWrapper):
                    'datatype': 'symmetric', 'cmap': 'blue-red',
                    # 'enable_isosurface_viz': True, 'isosurface_color': (0.4, 0.6, 0.6),
                    }
-    dims = (200, 200, 2)
+    RESOLUTION = IntParameter('resolution', 100, 2, 500)    #TODO add static params
+    BOUND = 2
 
     bound_low = (-2, -2, -0.02)
     bound_high = (2, 2, 0)
@@ -24,9 +25,11 @@ class ImplicitWrapper(EntityWrapper):
     @property
     def grid(self):
         if ImplicitWrapper._grid is None:
-            ImplicitWrapper._grid = ps.register_volume_grid("Grid", ImplicitWrapper.dims,
-                                                            ImplicitWrapper.bound_low,  # TODO add to parameters
-                                                            ImplicitWrapper.bound_high)
+            dims = (ImplicitWrapper.RESOLUTION.value, ImplicitWrapper.RESOLUTION.value, 2)
+            bound_low = (-ImplicitWrapper.BOUND, -ImplicitWrapper.BOUND,
+                         -ImplicitWrapper.BOUND / ImplicitWrapper.RESOLUTION.value*2)
+            bound_high = (ImplicitWrapper.BOUND, ImplicitWrapper.BOUND, 0)
+            ImplicitWrapper._grid = ps.register_volume_grid("Grid", dims, bound_low, bound_high)
             ImplicitWrapper._grid.set_cull_whole_elements(False)
         return ImplicitWrapper._grid
 
@@ -40,9 +43,9 @@ class ImplicitWrapper(EntityWrapper):
                                                     isolines_enabled=True, **self.scalar_args)
 
 
-class AggregateWrapper(ImplicitWrapper):
+class AggregateWrapper(ImplicitWrapper):    #TODO move to drawable
     def __init__(self, implicit: Aggregate, children: [ImplicitWrapper], **kwargs):
-        super().__init__(implicit)
+        super().__init__(implicit, **kwargs)
         self.children = children
 
     def draw_ui(self):
@@ -53,3 +56,8 @@ class AggregateWrapper(ImplicitWrapper):
                 child.draw_ui()
                 self.changed = child.changed or self.changed
             imgui.TreePop()
+
+    def draw_geometry(self):
+        super().draw_geometry()
+        for child in self.children:
+            child.draw_geometry()

@@ -33,8 +33,9 @@ class ParameterWrapper:
         imgui.TextWrapped(f'{param.name:15}')
         imgui.SameLine()
         imgui.SetNextItemWidth(200)
-        changed, value = imgui.SliderInt('', param.value,
-                                         v_min=param.min, v_max=param.max)
+        changed, value = imgui.InputInt('', param.value, step=1)
+        # changed, value = imgui.SliderInt('', param.value,
+        #                                  v_min=param.min, v_max=param.max)
         if changed:
             param.value = value
         imgui.SameLine()

@@ -27,6 +27,10 @@ class Parametric(Entity, ABC):
     def gradient(self, parameter):
         pass
 
+    @abstractmethod
+    def gradgrad(self, parameter):
+        pass
+
 
 class CubicBezier(Parametric):
     CONTROL_POINT_COUNT = 4
@@ -35,13 +39,14 @@ class CubicBezier(Parametric):
                        [3, -6, 3, 0],
                        [-1, 3, -3, 1]], dtype=np.float32)
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def gradient(self, parameter: float) -> np.ndarray:
-        raise NotImplementedError()
-
-    def forward(self, parameter: float) -> np.ndarray:
-        t = parameter
+    def forward(self, t):
         t = np.column_stack([np.ones_like(t), t, t**2, t**3])
+        return t @ self.matrix @ self.control_points.points
+
+    def gradient(self, t):
+        t = np.column_stack([np.zeros_like(t), np.ones_like(t), 2*t, 3 * (t ** 2)])
+        return t @ self.matrix @ self.control_points.points
+
+    def gradgrad(self, t):
+        t = np.column_stack([np.zeros_like(t), np.zeros_like(t), 2 * np.ones_like(t), 6 * t])
         return t @ self.matrix @ self.control_points.points

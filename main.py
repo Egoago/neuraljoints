@@ -2,22 +2,34 @@ import numpy as np
 import polyscope as ps
 
 from neuraljoints.geometry.aggregate import RoundUnion, Union
-from neuraljoints.geometry.implicit import Sphere, Cube, SDFToUDF, ParametricToImplicitBrute
+from neuraljoints.geometry.implicit import Sphere, Cube, SDFToUDF
 from neuraljoints.geometry.parametric import CubicBezier
+from neuraljoints.geometry.parametric_to_implicit import ParametricToImplicitNewton, ParametricToImplicitBinary, \
+    ParametricToImplicitNewtonBinary
 from neuraljoints.ui.ui import UIHandler
 
 
 if __name__ == "__main__":
     UIHandler.init()
 
+    cb = CubicBezier()
+
     implicits = [# RoundUnion(children=[Sphere(), Cube()]),
-                 Union(children=[SDFToUDF(Sphere()),ParametricToImplicitBrute(CubicBezier())]),
-                 #ParametricToImplicitBrute(CubicBezier()),
+                 #RoundUnion(children=[SDFToUDF(Sphere()), ParametricToImplicitBrute(CubicBezier())]),
+                 #ParametricToImplicitNewtonBinary(cb),
+                 #ParametricToImplicitBinary(cb),
+                 ParametricToImplicitNewton(cb),
+                 #ParametricToImplicitBrute(cb),
+                 #Union(children=[Sphere(), Cube()]),
                 ]
 
     #implicits[0].children[0].transform.translation._value = np.array([0.8, 0, 0])
     #implicits[0].children[1].transform.translation._value = np.array([-0.8, 0, 0])
     #value = 0
+    cb.control_points.points = np.array([[-1, 0, 0],
+                                         [-1, 1, 0],
+                                         [1, 1, 0],
+                                         [1, 0, 0]], dtype=np.float32)
     UIHandler.add_entities(implicits)
 
 
