@@ -18,11 +18,11 @@ class ParameterWrapper:
         imgui.SameLine()
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderFloat('', param.value,
-                                           v_min=param.min, v_max=param.max)
+                                           v_min=param.min, v_max=param.max, power=param.power)
         if changed:
             param.value = value
         imgui.SameLine()
-        if imgui.Button("reset", (55, 28)):
+        if imgui.Button("reset"):
             param.reset()
             changed = True
         return changed
@@ -39,7 +39,7 @@ class ParameterWrapper:
         if changed:
             param.value = value
         imgui.SameLine()
-        if imgui.Button("reset", (55, 28)):
+        if imgui.Button("reset"):
             param.reset()
             changed = True
         return changed
@@ -51,11 +51,11 @@ class ParameterWrapper:
         imgui.SameLine()
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderFloat3('', param.value.tolist(),
-                                            v_min=param.min, v_max=param.max)
+                                            v_min=param.min, v_max=param.max, power=param.power)
         if changed:
             param.value = value
         imgui.SameLine()
-        if imgui.Button("reset", (55, 28)):
+        if imgui.Button("reset"):
             param.reset()
             changed = True
         return changed

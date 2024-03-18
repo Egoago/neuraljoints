@@ -16,21 +16,21 @@ class EntityWrapper(Wrapper, ABC):
         self.entity_wrappers = entity_wrappers if entity_wrappers is not None else []
 
     def draw_entity_ui(self, entity: Entity):
-        if len(entity.parameters) > 0:
+        if len(entity.hparams) > 0:
             imgui.Separator()
             imgui.Text(entity.name)
-            for parameter in entity.parameters:
+            for parameter in entity.hparams:
                 self.changed = ParameterWrapper.draw(parameter) or self.changed
 
     def draw_ui(self):
         imgui.PushId(self.id)
         super().draw_ui()
-        parameters = self.entity.parameters
-        if len(self.entity_wrappers) > 0 or len(parameters) > 0:
+        hparams = self.entity.hparams
+        if len(self.entity_wrappers) > 0 or len(hparams) > 0:
             imgui.Separator()
             imgui.Text(self.entity.name)
-        for parameter in parameters:
-            self.changed = ParameterWrapper.draw(parameter) or self.changed
+        for hparam in hparams:
+            self.changed = ParameterWrapper.draw(hparam) or self.changed
         if len(self.entity_wrappers) > 0:
             if len(self.entity_wrappers) == 1:
                 imgui.Indent(10)

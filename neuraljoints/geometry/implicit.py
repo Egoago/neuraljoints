@@ -50,17 +50,16 @@ class Sphere(SDF):
 
 
 class Cube(SDF):
-    def __init__(self, size=1., *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.size = FloatParameter('size', size, min=0.01, max=2.)
 
     def forward(self, position):
-        d = abs(position) - self.size.value
+        d = abs(position) - 1
         return (np.linalg.norm(np.maximum(d, 0), axis=-1) +
                 np.minimum(np.max(d, axis=-1), 0))
 
     def gradient(self, position):
-        d = abs(position) - self.size.value
+        d = abs(position) - 1
         outer = np.maximum(d, 0)
         inner = np.minimum(d, 0)
         zeros = np.zeros_like(position)

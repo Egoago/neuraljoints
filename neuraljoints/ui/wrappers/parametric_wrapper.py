@@ -21,7 +21,7 @@ class ParametricWrapper(EntityWrapper):
     def draw_ui(self):
         super().draw_ui()
         checkbox_result = imgui.Checkbox('Show curvature comb', self.show_curvature_comb)
-        self.changed = checkbox_result[0] != checkbox_result[1] or self.changed
+        self.changed = self.show_curvature_comb != checkbox_result[1] or self.changed
         self.show_curvature_comb = checkbox_result[1]
 
     def draw_geometry(self):

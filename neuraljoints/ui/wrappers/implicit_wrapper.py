@@ -8,7 +8,7 @@ from neuraljoints.utils.parameters import IntParameter
 
 
 class ImplicitWrapper(EntityWrapper):
-    scalar_args = {'enabled': True, 'defined_on': 'nodes',
+    scalar_args = {'defined_on': 'nodes',
                    'datatype': 'symmetric', 'cmap': 'blue-red',
                    # 'enable_isosurface_viz': True, 'isosurface_color': (0.4, 0.6, 0.6),
                    }
@@ -22,8 +22,9 @@ class ImplicitWrapper(EntityWrapper):
     def __init__(self, implicit: Implicit, **kwargs):
         super().__init__(entity=implicit, **kwargs)
 
+    @classmethod
     @property
-    def grid(self):
+    def grid(cls):
         if ImplicitWrapper._grid is None:
             dims = (ImplicitWrapper.RESOLUTION.value, ImplicitWrapper.RESOLUTION.value, 2)
             bound_low = (-ImplicitWrapper.BOUND, -ImplicitWrapper.BOUND,
@@ -39,8 +40,11 @@ class ImplicitWrapper(EntityWrapper):
 
     def draw_geometry(self):
         super().draw_geometry()
-        self.grid.add_scalar_quantity_from_callable(self.implicit.name, self.implicit,
-                                                    isolines_enabled=True, **self.scalar_args)
+        self.draw_implicit(self.implicit)
+
+    @classmethod
+    def draw_implicit(cls, implicit: Implicit):
+        cls.grid.add_scalar_quantity_from_callable(implicit.name, implicit, isolines_enabled=True, **cls.scalar_args)
 
 
 class AggregateWrapper(ImplicitWrapper):    #TODO move to drawable

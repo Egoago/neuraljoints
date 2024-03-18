@@ -17,6 +17,7 @@ class UIHandler:
     def init(cls):
         ps.init()
         ps.set_automatically_compute_scene_extents(False)
+        ps.set_open_imgui_window_for_user_callback(False)
         # ps.set_navigation_style("planar")
         # ps_plane = ps.add_scene_slice_plane()
         # ps_plane.set_pose((0, 0, 0.05), (0, 0, -1))
@@ -25,7 +26,7 @@ class UIHandler:
         ps.set_ground_plane_mode('none')
         ps.load_color_map('blue-red', 'colormap.png')
         io = imgui.GetIO()
-        cls.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 20.)
+        cls.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 25.)
         cls.__add_base_vectors()
         cls.__set_camera()
 
@@ -41,6 +42,7 @@ class UIHandler:
     @classmethod
     def update(cls):
         imgui.PushFont(cls.font)
+        imgui.Begin("NeuralJoints", True, imgui.ImGuiWindowFlags_AlwaysAutoResize)
         io = imgui.GetIO()
         IOHandler.update(io)
 
@@ -55,6 +57,7 @@ class UIHandler:
 
         for drawable in cls.drawables:
             drawable.draw()
+        imgui.End()
 
     @classmethod
     def __set_camera(cls):

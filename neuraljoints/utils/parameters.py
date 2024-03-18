@@ -26,12 +26,13 @@ class Parameter(ABC):
 
 class FloatParameter(Parameter):
 
-    def __init__(self, name: str, value=0., min=-1., max=1.):
+    def __init__(self, name: str, value=0., min=-1., max=1., power=1.):
         super().__init__(name=name)
         self._value = value
         self.initial = copy(value)
         self.min = min
         self.max = max
+        self.power = power
 
     @property
     def value(self):

@@ -11,7 +11,7 @@ class Entity:
         super().__init__()
 
     @property
-    def parameters(self):
+    def hparams(self):
         return [v for v in self.__dict__.values() if isinstance(v, Parameter)]
 
     @property

@@ -26,7 +26,7 @@ class ControlPointsWrapper(IOListener, EntityWrapper):
         self.changed = self.moved or self.changed
         imgui.Text("points")
         imgui.SameLine()
-        if imgui.SmallButton('reset'):
+        if imgui.Button('reset'):
             self.changed = True
             self.control_points.points = self.initial
         ps.register_point_cloud(self.control_points.name, self.control_points.points,
