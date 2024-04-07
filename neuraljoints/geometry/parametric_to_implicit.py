@@ -3,7 +3,8 @@ import polyscope as ps
 
 from neuraljoints.geometry.implicit import ImplicitProxy
 from neuraljoints.geometry.parametric import Parametric
-from neuraljoints.utils.parameters import IntParameter, FloatParameter
+from neuraljoints.utils.math import normalize
+from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolParameter
 
 
 class ParametricToImplicitBrute(ImplicitProxy):
@@ -21,14 +22,41 @@ class ParametricToImplicitBrute(ImplicitProxy):
         raise NotImplementedError()
 
 
+class ParametricToImplicitGWN(ImplicitProxy):
+    def __init__(self, parametric: Parametric, **kwargs):
+        super().__init__(**kwargs)
+        self.parametric = parametric
+        self.resolution = IntParameter('resolution', value=10, min=3, max=200)
+
+    @staticmethod
+    def angle_between(a, b):
+        return
+
+    def forward(self, position):
+        parameters = np.linspace(0., 1., self.resolution.value, dtype=np.float32)
+        points = self.parametric(parameters)
+        d = points[None, ...] - position[:, None, :]
+        # udf = np.linalg.norm(d, axis=-1).min(axis=-1)
+        d = normalize(d)
+        a = d[:, :-1]
+        b = d[:, 1:]
+        c = np.cross(a, b)
+        angles = np.arctan2(np.linalg.norm(c, axis=-1),
+                            np.einsum('ijk,ijk->ij', a, b))
+        return angles.sum(axis=-1)/(2*np.pi)
+
+    def gradient(self, position):
+        raise NotImplementedError()
+
+
 class ParametricToImplicitNewton(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
         super().__init__(**kwargs)
         self.parametric = parametric
         self.iterations = IntParameter('iterations', value=3, min=0, max=300)
         self.resolution = IntParameter('resolution', value=100, min=2, max=40)
-        #self.distance_tol = FloatParameter('distance tolerance', value=0, min=0, max=0.1)
-        #self.cosine_tol = FloatParameter('cosine tolerance', value=0, min=0, max=1)
+        # self.distance_tol = FloatParameter('distance tolerance', value=0, min=0, max=0.1)
+        # self.cosine_tol = FloatParameter('cosine tolerance', value=0, min=0, max=1)
 
     def forward(self, p):
         def dot(a, b):
@@ -51,11 +79,11 @@ class ParametricToImplicitNewton(ImplicitProxy):
             d = c - p[mask]
 
             u[mask] = u_masked - (dot(c_d, d) / (dot(c_d_d, d) + dot(c_d, c_d)))
-            #u = u.clip(0, 1)
+            # u = u.clip(0, 1)
 
-            #d_norm = np.linalg.norm(d, axis=-1)
+            # d_norm = np.linalg.norm(d, axis=-1)
             # c_d_norm = np.linalg.norm(c_d, axis=-1)
-            #mask[mask] = d_norm > self.distance_tol.value
+            # mask[mask] = d_norm > self.distance_tol.value
             # mask = mask * (dot(c_d, d) / (c_d_norm * d_norm) > self.cosine_tol.value)
 
             # if not np.any(mask):
@@ -89,16 +117,16 @@ class ParametricToImplicitBinary(ImplicitProxy):
         d = np.einsum('ijk,ijk->ij', d, d)
         min_idx = np.argmin(d, axis=0)
         i_a = (min_idx - 1).clip(0, None)
-        i_b = (min_idx + 1).clip(None, len(t)-1)
+        i_b = (min_idx + 1).clip(None, len(t) - 1)
 
         t_a, t_b = t[i_a], t[i_b]
-        d_a = np.linalg.norm(c[i_a]-p, axis=-1)
-        d_b = np.linalg.norm(c[i_b]-p, axis=-1)
+        d_a = np.linalg.norm(c[i_a] - p, axis=-1)
+        d_b = np.linalg.norm(c[i_b] - p, axis=-1)
 
         for _ in range(self.iterations.value):
             t_c = (t_a + t_b) / 2
             c = self.parametric(t_c)
-            d_c = np.linalg.norm((c-p), axis=-1)
+            d_c = np.linalg.norm((c - p), axis=-1)
 
             mask = d_a < d_b
             t_a[~mask] = t_c[~mask]
@@ -129,8 +157,8 @@ class ParametricToImplicitNewtonBinary(ImplicitProxy):
         c = self.parametric(u)
         d = c[:, None, :] - p[None, ...]
         u = u[np.argmin(np.einsum('ijk,ijk->ij', d, d), axis=0)]
-        u_a = u - self.band.value/2
-        u_b = u + self.band.value/2
+        u_a = u - self.band.value / 2
+        u_b = u + self.band.value / 2
 
         u_ab = np.concatenate([u_a, u_b])
         c_a, c_b = np.split(self.parametric(u_ab), 2)
@@ -138,7 +166,7 @@ class ParametricToImplicitNewtonBinary(ImplicitProxy):
         f_a = dot(cd_a, c_a - p)
         f_b = dot(cd_b, c_b - p)
 
-        #switch
+        # switch
         mask = f_a < f_b
         u_c = np.where(mask, u_a, u_b)
         u_b = np.where(~mask, u_a, u_b)
@@ -167,7 +195,7 @@ class ParametricToImplicitNewtonBinary(ImplicitProxy):
             mask[mask] = positive_f + negative_f
 
         c = np.where((np.abs(f_a) < np.abs(f_b))[:, None], c_a, c_b)
-        return np.linalg.norm(c-p, axis=-1)
+        return np.linalg.norm(c - p, axis=-1)
 
     def gradient(self, position):
         raise NotImplementedError()

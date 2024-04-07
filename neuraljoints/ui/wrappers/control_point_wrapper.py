@@ -10,12 +10,15 @@ from neuraljoints.utils.parameters import FloatParameter
 
 
 class ControlPointsWrapper(IOListener, EntityWrapper):
+    INSTANCES: list['ControlPointsWrapper'] = []
+
     def __init__(self, control_points: ControlPoints, **kwargs):
         super().__init__(entity=control_points, **kwargs)
         self.initial = np.copy(control_points.points)
         self.entity.control_radius = FloatParameter('control point radius', value=0.04, min=0.03, max=0.1)
         self.selected = None
         self.moved = False
+        ControlPointsWrapper.INSTANCES.append(self)
 
     @property
     def control_points(self) -> ControlPoints:
@@ -30,19 +33,26 @@ class ControlPointsWrapper(IOListener, EntityWrapper):
             self.changed = True
             self.control_points.points = self.initial
         ps.register_point_cloud(self.control_points.name, self.control_points.points,
-                                enabled=True, radius=self.entity.control_radius.value)
+                                enabled=True, radius=self.entity.control_radius.value,
+                                color=self.color)
 
-    def __select_at(self, screen_coords):
-        self.selected = None
+    @classmethod
+    def __select_at(cls, screen_coords):
+        lengths = []
         ps.set_give_focus_on_show(True)
         world_pos = ps.screen_coords_to_world_position(screen_coords)
-        lengths = np.linalg.norm(self.control_points.points - world_pos, axis=-1)
-        min_index = np.argmin(lengths)
-        if lengths[min_index] < 1.5 * self.entity.control_radius.value:
-            self.selected = min_index
+        for instance in cls.INSTANCES:
+            instance.selected = None
+            lengths.append(np.linalg.norm(instance.control_points.points - world_pos, axis=-1))
+        lengths = np.array(lengths)
+        inst_idx, cp_idx = np.unravel_index(np.argmin(lengths), lengths.shape)
+        if lengths[inst_idx, cp_idx] < 1.5 * cls.INSTANCES[inst_idx].entity.control_radius.value:
+            cls.INSTANCES[inst_idx].selected = cp_idx
 
     def on_mouse_clicked(self, screen_coords, button):
-        if button == imgui.ImGuiMouseButton_Left and imgui.GetIO().KeyCtrl:
+        if button == imgui.ImGuiMouseButton_Left and \
+           imgui.GetIO().KeyCtrl and \
+           self.selected is None:
             self.__select_at(screen_coords)
 
     def on_mouse_released(self, screen_coords, button):

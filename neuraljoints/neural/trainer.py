@@ -11,9 +11,10 @@ from neuraljoints.utils.parameters import IntParameter, FloatParameter
 class Trainer(Entity):
     def __init__(self, model: Network, implicit: Implicit, **kwargs):
         super().__init__(**kwargs)
-        self.max_steps = IntParameter('max_steps', 1000, 1, 10000)
-        self.lr = FloatParameter('lr', 1e-2, 1e-7, 0.1)
-        self.eikonal_loss = FloatParameter('eikonal_loss', 1e-2, 0, 1)
+        self.max_steps = IntParameter('max_steps', 10000, 1, 10000)
+        self.lr = FloatParameter('lr', 1e-4, 1e-7, 0.1)
+        self.eikonal_loss = FloatParameter('eikonal_loss', 0, 0, 1)
+        self.closest_point_loss = FloatParameter('closest_point_loss', 0, 0, 1)
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = model.to(self.device)
@@ -41,10 +42,11 @@ class Trainer(Entity):
         self.train()
         self.training = False
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr.value)  # TODO remove redundancy
+        self.scheduler = LRScheduler(self.optimizer, self.lr)
 
     @property
-    def calculate_eikonal(self):
-        return self.eikonal_loss.value > 0
+    def calculate_gradient(self):
+        return self.eikonal_loss.value > 0 or self.closest_point_loss.value > 0
 
     def update(self):
         if self.training:
@@ -54,16 +56,26 @@ class Trainer(Entity):
             with torch.no_grad():
                 x = self.sampler()
                 y = torch.tensor(self.implicit(x), device=self.device, dtype=torch.float32)
-            x = torch.tensor(x, device=self.device, dtype=torch.float32, requires_grad=self.calculate_eikonal)
+            x = torch.tensor(x, device=self.device, dtype=torch.float32, requires_grad=self.calculate_gradient)
 
             pred = self.model(x)
-            if self.calculate_eikonal:
+
+            if self.calculate_gradient:
                 pred.sum().backward(inputs=x, retain_graph=True)
-                grads = x.grad.detach()
-                eikonal_loss = ((torch.linalg.norm(grads, axis=-1) - 1)**2).mean()
+                grads = x.grad
+
             loss = self.loss_fn(pred, y)
-            if self.calculate_eikonal:
+
+            if self.eikonal_loss.value > 0:
+                eikonal_loss = ((torch.linalg.norm(grads, axis=-1) - 1)**2).mean()
                 loss = loss + self.eikonal_loss.value * eikonal_loss
+
+            if self.closest_point_loss.value > 0:
+                x_new = x - pred[..., None] * grads
+                pred_new = self.model(x_new)
+                closest_point_loss = (pred_new**2).mean()
+                loss = loss + self.closest_point_loss.value * closest_point_loss
+
             loss.backward()
             self.optimizer.step()
             self.scheduler.update()

@@ -67,6 +67,19 @@ class Cube(SDF):
         return np.where.norm(d > 0) + 1
 
 
+class Plane(SDF):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, position):
+        return position[..., 1]
+
+    def gradient(self, position):
+        grad = np.zeros_like(position)
+        grad[..., 1] = 1
+        return grad
+
+
 class ImplicitProxy(Implicit, ABC):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

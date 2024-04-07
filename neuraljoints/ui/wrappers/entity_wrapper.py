@@ -1,5 +1,6 @@
 ﻿import uuid
 from abc import ABC
+import random
 
 from polyscope_bindings import imgui
 
@@ -13,6 +14,7 @@ class EntityWrapper(Wrapper, ABC):
         super().__init__()
         self.entity = entity
         self.id = str(uuid.uuid4())
+        self.color = [random.random() for _ in range(3)]
         self.entity_wrappers = entity_wrappers if entity_wrappers is not None else []
 
     def draw_entity_ui(self, entity: Entity):
@@ -25,10 +27,14 @@ class EntityWrapper(Wrapper, ABC):
     def draw_ui(self):
         imgui.PushId(self.id)
         super().draw_ui()
+
         hparams = self.entity.hparams
         if len(self.entity_wrappers) > 0 or len(hparams) > 0:
             imgui.Separator()
             imgui.Text(self.entity.name)
+            imgui.SameLine()
+            changed, self.color = imgui.ColorEdit3('', self.color, imgui.ImGuiColorEditFlags_NoInputs)
+            self.changed = changed or self.changed
         for hparam in hparams:
             self.changed = ParameterWrapper.draw(hparam) or self.changed
         if len(self.entity_wrappers) > 0:

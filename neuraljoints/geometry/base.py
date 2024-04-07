@@ -6,8 +6,17 @@ from neuraljoints.utils.parameters import Parameter
 
 
 class Entity:
+    __names = []
+
     def __init__(self, name=None):
-        self.name = name if name is not None else self.__class__.__name__
+        if name is None:
+            name = self.__class__.__name__
+        self.name = name
+        count = 2
+        while self.name in Entity.__names:
+            self.name = f'{name} {count}'
+            count += 1
+        Entity.__names.append(self.name)
         super().__init__()
 
     @property

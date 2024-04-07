@@ -35,7 +35,7 @@ class ParametricWrapper(EntityWrapper):
         binormal = np.cross(tangent, acceleration)
         normal = np.cross(binormal, tangent)
 
-        cn = ps.register_curve_network(self.parametric.name, points, 'line')
+        cn = ps.register_curve_network(self.parametric.name, points, 'line', color=self.color)
         cn.add_vector_quantity('vector', points, vectortype='ambient', radius=0.01)
         cn.add_vector_quantity('tangent', tangent, vectortype='ambient', radius=0.01)
         cn.add_vector_quantity('acceleration', acceleration, vectortype='ambient', radius=0.01)
