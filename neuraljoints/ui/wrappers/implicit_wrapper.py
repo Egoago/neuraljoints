@@ -1,38 +1,62 @@
+from typing import Callable
+
+import numpy as np
 import polyscope as ps
 from polyscope import imgui
 
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.ui.wrappers.entity_wrapper import EntityWrapper
-from neuraljoints.utils.parameters import IntParameter
+from neuraljoints.utils.parameters import IntParameter, FloatParameter
 
 
 class ImplicitWrapper(EntityWrapper):
-    scalar_args = {'defined_on': 'nodes',
-                   'datatype': 'symmetric', 'cmap': 'blue-red',
-                   # 'enable_isosurface_viz': True, 'isosurface_color': (0.4, 0.6, 0.6),
-                   }
+    scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
+                   'isolines_enabled': True, 'isoline_width': 0.05}
     RESOLUTION = IntParameter('resolution', 100, 2, 500)    #TODO add static params
-    BOUND = 2
+    BOUND = FloatParameter('bound', 2, 1, 10)
 
-    bound_low = (-2, -2, -0.02)
-    bound_high = (2, 2, 0)
+    _mesh = None
     _grid = None
 
     def __init__(self, implicit: Implicit, **kwargs):
         super().__init__(entity=implicit, **kwargs)
 
     @classmethod
+    def points(cls):
+        linspace = np.linspace(-cls.BOUND.value, cls.BOUND.value, cls.RESOLUTION.value)
+        x, y = np.meshgrid(linspace, -linspace)
+        points = np.stack([x, y, np.zeros_like(x)], axis=-1)
+        return points
+
+    @classmethod
+    def add_scalar_texture(cls, name: str, func: Callable):
+        texture = func(cls.points())
+        cls.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv", **cls.scalar_args)
+
+    @classmethod
+    def add_color_texture(cls, name: str, func: Callable):
+        texture = func(cls.points())
+        cls.mesh.add_color_quantity(name, texture, defined_on='texture', param_name="uv", **cls.scalar_args)
+
+    @classmethod
     @property
-    def grid(cls):
-        if ImplicitWrapper._grid is None:
-            dims = (ImplicitWrapper.RESOLUTION.value, ImplicitWrapper.RESOLUTION.value, 2)
-            bound_low = (-ImplicitWrapper.BOUND, -ImplicitWrapper.BOUND,
-                         -ImplicitWrapper.BOUND / ImplicitWrapper.RESOLUTION.value*2)
-            bound_high = (ImplicitWrapper.BOUND, ImplicitWrapper.BOUND, 0)
-            ImplicitWrapper._grid = ps.register_volume_grid("Grid", dims, bound_low, bound_high)
-            ImplicitWrapper._grid.set_cull_whole_elements(False)
-        return ImplicitWrapper._grid
+    def mesh(cls):
+        if ImplicitWrapper._mesh is None:
+            vertices = np.array([[-1, 1, 0],
+                                 [1, 1, 0],
+                                 [1, -1, 0],
+                                 [-1, -1, 0]]) * cls.BOUND.value
+
+            faces = np.arange(4).reshape((1, 4))
+            uv = np.array([[0, 1],
+                           [1, 1],
+                           [1, 0],
+                           [0, 0]])
+
+            ImplicitWrapper._mesh = ps.register_surface_mesh("Mesh", vertices, faces)
+            ImplicitWrapper._mesh.add_parameterization_quantity("uv", uv, defined_on='vertices', enabled=True)
+        return ImplicitWrapper._mesh
 
     @property
     def implicit(self) -> Implicit:
@@ -40,11 +64,7 @@ class ImplicitWrapper(EntityWrapper):
 
     def draw_geometry(self):
         super().draw_geometry()
-        self.draw_implicit(self.implicit)
-
-    @classmethod
-    def draw_implicit(cls, implicit: Implicit):
-        cls.grid.add_scalar_quantity_from_callable(implicit.name, implicit, isolines_enabled=True, **cls.scalar_args)
+        ImplicitWrapper.add_texture(self.implicit.name, self.implicit)
 
 
 class AggregateWrapper(ImplicitWrapper):    #TODO move to drawable

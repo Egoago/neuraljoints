@@ -52,7 +52,7 @@ class RoundUnion(Union):
 
     def reduce(self, values: [np.ndarray]):
         #https://www.ronja-tutorials.com/post/035-2d-sdf-combination/
-        intersectionSpace = np.column_stack(values) - self.radius.value
+        intersectionSpace = np.stack(values, axis=-1) - self.radius.value
         intersectionSpace = np.minimum(intersectionSpace, 0)
         insideDist = -np.linalg.norm(intersectionSpace, axis=-1)
         union = super().reduce(values)
