@@ -53,10 +53,13 @@ class UIHandler:
         cls.__add_base_vectors()
 
         imgui.Text('Grid')
-        ParameterWrapper.draw(ImplicitWrapper.RESOLUTION)
+        changed = ParameterWrapper.draw(ImplicitWrapper.RESOLUTION)   #TODO refactor
+        changed = ParameterWrapper.draw(ImplicitWrapper.BOUND) or changed
+        imgui.SameLine()
+        changed = ParameterWrapper.draw(ImplicitWrapper.GRADIENT) or changed
 
         for drawable in cls.drawables:
-            drawable.draw()
+            drawable.draw(refresh=changed)
         imgui.End()
 
     @classmethod

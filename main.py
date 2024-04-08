@@ -19,8 +19,8 @@ if __name__ == "__main__":
     #                                       [1, 0, 0]], dtype=np.float32)
 
     #implicit = p2i.ParametricToImplicitGWN(cb)
-    implicit = RoundUnion(children=[Plane(),
-                                    Plane()])
+    implicit = Cube()
+    #implicit = RoundUnion(children=[Plane(), Plane()])
     #model = Network()
     #trainer = Trainer(model=model, implicit=implicit)
     #UIHandler.add_entity(trainer)

@@ -18,10 +18,6 @@ class ParameterWrapper:
         if changed:
             param.value = value
         imgui.SameLine()
-        if imgui.Button("reset"):
-            param.reset()
-            changed = True
-        imgui.SameLine()
         imgui.TextWrapped(f'{param.name:15}')
         return changed
 
@@ -64,9 +60,7 @@ class ParameterWrapper:
     @multidispatch(params.IntParameter)
     def __draw(cls, param: params.IntParameter) -> bool:
         imgui.SetNextItemWidth(200)
-        changed, value = imgui.InputInt('', param.value, step=1)
-        # changed, value = imgui.SliderInt('', param.value,
-        #                                  v_min=param.min, v_max=param.max)
+        changed, value = imgui.SliderInt('', param.value, v_min=param.min, v_max=param.max)
         imgui.SameLine()
         imgui.TextWrapped(f'{param.name:15}')
         if changed:

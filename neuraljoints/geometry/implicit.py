@@ -4,6 +4,7 @@ import numpy as np
 
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.parametric import Parametric
+from neuraljoints.utils.math import normalize
 from neuraljoints.utils.parameters import FloatParameter, Transform, IntParameter
 
 
@@ -17,6 +18,8 @@ class Implicit(Entity, ABC):
             position = self.transform(position)
         if value == 'value':
             return self.forward(position)
+        if value == 'gradient':
+            return self.gradient(position)
         if value == 'fx':
             return self.gradient(position)[..., 0]
         if value == 'fy':
@@ -60,11 +63,9 @@ class Cube(SDF):
 
     def gradient(self, position):
         d = abs(position) - 1
-        outer = np.maximum(d, 0)
-        inner = np.minimum(d, 0)
-        zeros = np.zeros_like(position)
-        zeros[np.argmax(d, axis=-1)] = 1
-        return np.where.norm(d > 0) + 1
+        outer = normalize(np.maximum(d, 0))
+        inner = np.eye(position.shape[-1])[np.argmax(d, axis=-1)]
+        return np.where((np.max(d, axis=-1) > 0)[..., None], outer, inner) * np.sign(position)
 
 
 class Plane(SDF):

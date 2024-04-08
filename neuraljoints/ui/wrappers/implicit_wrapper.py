@@ -7,7 +7,7 @@ from polyscope import imgui
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.ui.wrappers.entity_wrapper import EntityWrapper
-from neuraljoints.utils.parameters import IntParameter, FloatParameter
+from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolParameter
 
 
 class ImplicitWrapper(EntityWrapper):
@@ -15,6 +15,7 @@ class ImplicitWrapper(EntityWrapper):
                    'isolines_enabled': True, 'isoline_width': 0.05}
     RESOLUTION = IntParameter('resolution', 100, 2, 500)    #TODO add static params
     BOUND = FloatParameter('bound', 2, 1, 10)
+    GRADIENT = BoolParameter('gradient', False)
 
     _mesh = None
     _grid = None
@@ -37,7 +38,8 @@ class ImplicitWrapper(EntityWrapper):
     @classmethod
     def add_color_texture(cls, name: str, func: Callable):
         texture = func(cls.points())
-        cls.mesh.add_color_quantity(name, texture, defined_on='texture', param_name="uv", **cls.scalar_args)
+        texture = (texture + 1) / 2
+        cls.mesh.add_color_quantity(name, texture, defined_on='texture', param_name="uv")
 
     @classmethod
     @property
@@ -64,7 +66,10 @@ class ImplicitWrapper(EntityWrapper):
 
     def draw_geometry(self):
         super().draw_geometry()
-        ImplicitWrapper.add_texture(self.implicit.name, self.implicit)
+        if self.GRADIENT.value:
+            ImplicitWrapper.add_color_texture(self.implicit.name, lambda p: self.implicit(p, 'gradient'))
+        else:
+            ImplicitWrapper.add_scalar_texture(self.implicit.name, self.implicit)
 
 
 class AggregateWrapper(ImplicitWrapper):    #TODO move to drawable

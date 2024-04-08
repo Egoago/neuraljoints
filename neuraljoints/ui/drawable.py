@@ -5,14 +5,14 @@ class Drawable:
         self.changed = False
         self.startup = True
 
-    def draw(self):
+    def draw(self, refresh=False):
         self.__set_changed(False)
         self.draw_ui()
         for value in self.__dict__.values():
             if isinstance(value, Drawable):
                 value.draw()
                 self.changed = value.changed or self.changed
-        if self.changed:
+        if self.changed or refresh:
             self.draw_geometry()
 
     def draw_geometry(self):
