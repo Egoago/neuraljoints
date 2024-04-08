@@ -57,7 +57,7 @@ class ImplicitWrapper(EntityWrapper):
                            [0, 0]])
 
             ImplicitWrapper._mesh = ps.register_surface_mesh("Mesh", vertices, faces)
-            ImplicitWrapper._mesh.add_parameterization_quantity("uv", uv, defined_on='vertices', enabled=True)
+            ImplicitWrapper._mesh.add_parameterization_quantity("uv", uv, defined_on='vertices')
         return ImplicitWrapper._mesh
 
     @property
@@ -67,7 +67,7 @@ class ImplicitWrapper(EntityWrapper):
     def draw_geometry(self):
         super().draw_geometry()
         if self.GRADIENT.value:
-            ImplicitWrapper.add_color_texture(self.implicit.name, lambda p: self.implicit(p, 'gradient'))
+            ImplicitWrapper.add_color_texture(self.implicit.name, lambda p: self.implicit(p, grad=True)[-1])
         else:
             ImplicitWrapper.add_scalar_texture(self.implicit.name, self.implicit)
 

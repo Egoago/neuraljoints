@@ -12,9 +12,10 @@ class Trainer(Entity):
     def __init__(self, model: Network, implicit: Implicit, **kwargs):
         super().__init__(**kwargs)
         self.max_steps = IntParameter('max_steps', 10000, 1, 10000)
-        self.lr = FloatParameter('lr', 1e-4, 1e-7, 0.1)
-        self.eikonal_loss = FloatParameter('eikonal_loss', 0, 0, 1)
-        self.closest_point_loss = FloatParameter('closest_point_loss', 0, 0, 1)
+        self.lr = FloatParameter('lr', 5e-3, 1e-7, 0.1)
+        self.eikonal_loss = FloatParameter('eikonal loss', 0, 0, 1)
+        self.closest_point_loss = FloatParameter('closest point loss', 0, 0, 1)
+        self.gradient_loss = FloatParameter('gradient loss', 0, 0, 1)
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = model.to(self.device)
@@ -46,7 +47,9 @@ class Trainer(Entity):
 
     @property
     def calculate_gradient(self):
-        return self.eikonal_loss.value > 0 or self.closest_point_loss.value > 0
+        return self.eikonal_loss.value > 0 or \
+               self.closest_point_loss.value > 0 or \
+               self.gradient_loss.value > 0
 
     def update(self):
         if self.training:
@@ -55,7 +58,12 @@ class Trainer(Entity):
             self.optimizer.zero_grad()
             with torch.no_grad():
                 x = self.sampler()
-                y = torch.tensor(self.implicit(x), device=self.device, dtype=torch.float32)
+                if self.gradient_loss.value > 0:
+                    y, y_grad = self.implicit(x, grad=True)
+                    y_grad = torch.tensor(y_grad, device=self.device, dtype=torch.float32)
+                else:
+                    y = self.implicit(x)
+                y = torch.tensor(y, device=self.device, dtype=torch.float32)
             x = torch.tensor(x, device=self.device, dtype=torch.float32, requires_grad=self.calculate_gradient)
 
             pred = self.model(x)
@@ -75,6 +83,10 @@ class Trainer(Entity):
                 pred_new = self.model(x_new)
                 closest_point_loss = (pred_new**2).mean()
                 loss = loss + self.closest_point_loss.value * closest_point_loss
+
+            if self.gradient_loss.value > 0:
+                gradient_loss = ((y_grad-grads)**2).mean()
+                loss = loss + self.gradient_loss.value * gradient_loss
 
             loss.backward()
             self.optimizer.step()

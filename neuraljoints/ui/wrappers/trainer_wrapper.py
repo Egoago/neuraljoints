@@ -39,16 +39,12 @@ class TrainerWrapper(EntityWrapper):
         super().draw_ui()
         imgui.Begin('Training', True, imgui.ImGuiWindowFlags_AlwaysAutoResize)
 
-        imgui.BeginDisabled(self.trainer.training)
-        if imgui.Button('start'):
-            self.trainer.train()
-        imgui.EndDisabled()
-
-        imgui.SameLine()
-        imgui.BeginDisabled(not self.trainer.training)
-        if imgui.Button('stop'):
-            self.trainer.stop()
-        imgui.EndDisabled()
+        if self.trainer.training:
+            if imgui.Button('stop'):
+                self.trainer.stop()
+        else:
+            if imgui.Button('start'):
+                self.trainer.train()
 
         imgui.SameLine()
         if (imgui.Button('render') or
@@ -77,5 +73,5 @@ class TrainerWrapper(EntityWrapper):
         imgui.End()
 
     def render(self):
-        implicit_model = Model2Implicit(self.trainer.model, self.trainer.device)
-        ImplicitWrapper.draw_implicit(implicit_model)
+        implicit_model = Model2Implicit(self.trainer.model, self.trainer.device, name=self.entity.name)
+        ImplicitWrapper.add_scalar_texture(implicit_model.name, implicit_model)

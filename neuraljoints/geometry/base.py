@@ -10,13 +10,15 @@ class Entity:
 
     def __init__(self, name=None):
         if name is None:
-            name = self.__class__.__name__
+            _name = self.__class__.__name__
+            count = 2
+            while _name in Entity.__names:
+                _name = f'{name} {count}'
+                count += 1
+            name = _name
+        if name not in Entity.__names:
+            Entity.__names.append(name)
         self.name = name
-        count = 2
-        while self.name in Entity.__names:
-            self.name = f'{name} {count}'
-            count += 1
-        Entity.__names.append(self.name)
         super().__init__()
 
     @property

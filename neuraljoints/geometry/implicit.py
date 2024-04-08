@@ -13,19 +13,15 @@ class Implicit(Entity, ABC):
         super().__init__(**kwargs)
         self.transform = transform if transform is not None else Transform()
 
-    def __call__(self, position, value='value'):
+    def __call__(self, position, grad=False):
         if self.transform is not None:
             position = self.transform(position)
-        if value == 'value':
-            return self.forward(position)
-        if value == 'gradient':
-            return self.gradient(position)
-        if value == 'fx':
-            return self.gradient(position)[..., 0]
-        if value == 'fy':
-            return self.gradient(position)[..., 1]
-        if value == 'fz':
-            return self.gradient(position)[..., 2]
+        values = self.forward(position)
+        if grad:
+            grads = self.gradient(position)
+            grads = self.transform(grads, inv=True)
+            return values, grads
+        return values
 
     @abstractmethod
     def forward(self, position):
@@ -49,7 +45,7 @@ class Sphere(SDF):
         return np.linalg.norm(position, axis=-1) - self.radius.value
 
     def gradient(self, position):
-        return position / np.linalg.norm(position, axis=-1, keepdims=True)
+        return normalize(position)
 
 
 class Cube(SDF):
@@ -96,4 +92,5 @@ class SDFToUDF(ImplicitProxy):
         return np.abs(self.sdf(position))
 
     def gradient(self, position):
-        raise NotImplementedError()
+        sdf = self.sdf(position)
+        raise self.sdf(position, 'gradient') * np.sign(sdf)[..., None]

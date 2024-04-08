@@ -1,7 +1,7 @@
 import numpy as np
 import polyscope as ps
 
-from neuraljoints.geometry.aggregate import Union, RoundUnion
+import neuraljoints.geometry.aggregate as aggregate
 from neuraljoints.geometry.implicit import Cube, Plane
 from neuraljoints.geometry.parametric import CubicBezier
 import neuraljoints.geometry.parametric_to_implicit as p2i
@@ -19,15 +19,16 @@ if __name__ == "__main__":
     #                                       [1, 0, 0]], dtype=np.float32)
 
     #implicit = p2i.ParametricToImplicitGWN(cb)
-    implicit = Cube()
+    implicit = aggregate.RUnion(children=[Cube(), Cube()])
+    #implicit = Cube()
     #implicit = RoundUnion(children=[Plane(), Plane()])
-    #model = Network()
-    #trainer = Trainer(model=model, implicit=implicit)
-    #UIHandler.add_entity(trainer)
+    model = Network()
+    trainer = Trainer(model=model, implicit=implicit)
+    UIHandler.add_entity(trainer)
     UIHandler.add_entity(implicit)
 
     ps.set_user_callback(lambda: UIHandler.update())
 
     while True:
-        #trainer.update()
+        trainer.update()
         ps.frame_tick()

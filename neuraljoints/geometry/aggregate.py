@@ -30,19 +30,54 @@ class Aggregate(Implicit):
 
 class Union(Aggregate):
     def gradient(self, position):
-        raise NotImplementedError()
+        values, gradients = list(zip(*map(lambda c: c(position, grad=True), self.children)))
+        values = np.stack(values, axis=-1)
+        gradients = np.stack(gradients, axis=-2)
+        indices = np.argmin(values, axis=-1)
+        return np.take_along_axis(gradients, indices[..., None, None], -2).squeeze()
 
     def reduce(self, values: [np.ndarray]):
         return np.minimum.reduce(values)
 
 
-class ComplexUnion(Aggregate):
+class Sum(Aggregate):
+    def gradient(self, position):
+        _, gradients = list(zip(*map(lambda c: c(position, grad=True), self.children)))
+        gradients = np.stack(gradients, axis=-1)
+        return gradients.sum(axis=-1)
+
+    def reduce(self, values: [np.ndarray]):
+        return np.sum(values, axis=0)
+
+
+class CleanUnion(Aggregate):
+    def gradient(self, position):
+        values, gradients = list(zip(*map(lambda c: c(position, grad=True), self.children)))
+        values = np.stack(values, axis=-1)
+        gradients = np.stack(gradients, axis=-1)
+        return gradients.sum(axis=-1) - ((values[..., None, :] * gradients).sum(axis=-1)/np.sqrt((values**2).sum(axis=-1))[..., None])
+
+    def reduce(self, values: [np.ndarray]):
+        values = np.stack(values, axis=-1)
+        return values.sum(axis=-1) - np.sqrt((values**2).sum(axis=-1))
+
+
+class RUnion(Aggregate):
+    def __init__(self, *args, **kwargs):
+        self.a0 = FloatParameter('a0', 1, min=0., max=100.)
+        super().__init__(*args, **kwargs)
+        for i in range(len(self.children)):
+            name = f'a{i+1}'
+            setattr(self, name, FloatParameter(name, 1, min=0., max=20.))
+
     def gradient(self, position):
         raise NotImplementedError()
 
     def reduce(self, values: [np.ndarray]):
-        values = -np.column_stack(values)
-        return values.max(axis=-1)
+        values = np.stack(values, axis=-1)
+        clean_union = values.sum(axis=-1) - np.sqrt((values**2).sum(axis=-1))
+        a = np.array([getattr(self, f'a{i + 1}').value for i in range(len(self.children))])
+        return clean_union + self.a0.value / (1 + ((values/a)**2).sum(axis=-1))
 
 
 class RoundUnion(Union):
@@ -59,7 +94,34 @@ class RoundUnion(Union):
         outsideDist = np.maximum(union, self.radius.value)
         return insideDist + outsideDist
 
+    def gradient(self, position):
+        raise NotImplementedError()
+
 
 class Intersect(Aggregate):
+    def gradient(self, position):
+        values, gradients = list(zip(*map(lambda c: c(position, grad=True), self.children)))
+        values = np.stack(values, axis=-1)
+        gradients = np.stack(gradients, axis=-2)
+        indices = np.argmax(values, axis=-1)
+        return np.take_along_axis(gradients, indices[..., None, None], -2).squeeze()
+
     def reduce(self, values: [np.ndarray]):
         return np.maximum.reduce(values)
+
+
+class SuperElliptic(Aggregate):
+    def __init__(self, *args, **kwargs):
+        self.t = FloatParameter('t', 1, min=0., max=100.)
+        super().__init__(*args, **kwargs)
+        for i in range(len(self.children)):
+            name = f'r{i+1}'
+            setattr(self, name, FloatParameter(name, 1, min=0., max=20.))
+
+    def reduce(self, values: [np.ndarray]):
+        p = np.stack(values, axis=-1)
+        r = np.array([getattr(self, f'r{i + 1}').value for i in range(len(self.children))])
+        return 1 - (np.maximum((1 - p) / r, 0) ** self.t.value).sum(axis=-1)
+
+    def gradient(self, position):
+        raise NotImplementedError()

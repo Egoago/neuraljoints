@@ -22,8 +22,8 @@ class Network(Entity, torch.nn.Module):
         layers = []
         dim = self.embedding.out_dims
         for i in range(self.n_layers.value - 1):
-            # layers.append(torch.nn.Linear(dim, self.n_neurons.value))
-            # layers.append(torch.nn.ReLU())
+            #layers.append(torch.nn.Linear(dim, self.n_neurons.value))
+            #layers.append(torch.nn.ReLU())
             layers.append(Siren(dim, self.n_neurons.value, i == 0))
             dim = self.n_neurons.value
         if self.dropout.value > 0:
