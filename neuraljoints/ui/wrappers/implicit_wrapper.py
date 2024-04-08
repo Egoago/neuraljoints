@@ -28,16 +28,16 @@ class ImplicitWrapper(EntityWrapper):
         linspace = np.linspace(-cls.BOUND.value, cls.BOUND.value, cls.RESOLUTION.value)
         x, y = np.meshgrid(linspace, -linspace)
         points = np.stack([x, y, np.zeros_like(x)], axis=-1)
-        return points
+        return points.reshape(-1, 3)
 
     @classmethod
     def add_scalar_texture(cls, name: str, func: Callable):
-        texture = func(cls.points())
+        texture = func(cls.points()).reshape(cls.RESOLUTION.value, cls.RESOLUTION.value)
         cls.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv", **cls.scalar_args)
 
     @classmethod
     def add_color_texture(cls, name: str, func: Callable):
-        texture = func(cls.points())
+        texture = func(cls.points()).reshape(cls.RESOLUTION.value, cls.RESOLUTION.value, 3)
         texture = (texture + 1) / 2
         cls.mesh.add_color_quantity(name, texture, defined_on='texture', param_name="uv")
 

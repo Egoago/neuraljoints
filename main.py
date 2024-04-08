@@ -12,16 +12,16 @@ from neuraljoints.ui.ui import UIHandler
 if __name__ == "__main__":
     UIHandler.init()
 
-    # cb1 = CubicBezier()
-    # cb1.control_points.points = np.array([[-1, 0, 0],
-    #                                       [-1, 1, 0],
-    #                                       [1, 1, 0],
-    #                                       [1, 0, 0]], dtype=np.float32)
+    cb = CubicBezier()
+    cb.control_points.points = np.array([[-1, 0, 0],
+                                         [-1, 1, 0],
+                                         [1, 1, 0],
+                                         [1, 0, 0]], dtype=np.float32)
 
-    #implicit = p2i.ParametricToImplicitGWN(cb)
-    implicit = aggregate.RUnion(children=[Cube(), Cube()])
-    #implicit = Cube()
-    #implicit = RoundUnion(children=[Plane(), Plane()])
+    implicit = p2i.ParametricToImplicitGWN(cb)
+    # implicit = aggregate.RUnion(children=[Cube(), Cube()])
+    # implicit = Cube()
+    # implicit = RoundUnion(children=[Plane(), Plane()])
     model = Network()
     trainer = Trainer(model=model, implicit=implicit)
     UIHandler.add_entity(trainer)
