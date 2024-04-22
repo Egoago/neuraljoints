@@ -28,10 +28,6 @@ class ParametricToImplicitGWN(ImplicitProxy):
         self.parametric = parametric
         self.resolution = IntParameter('resolution', value=10, min=3, max=200)
 
-    @staticmethod
-    def angle_between(a, b):
-        return
-
     def forward(self, position):
         parameters = np.linspace(0., 1., self.resolution.value, dtype=np.float32)
         points = self.parametric(parameters)

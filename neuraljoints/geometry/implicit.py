@@ -3,9 +3,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from neuraljoints.geometry.base import Entity
-from neuraljoints.geometry.parametric import Parametric
 from neuraljoints.utils.math import normalize
-from neuraljoints.utils.parameters import FloatParameter, Transform, IntParameter
+from neuraljoints.utils.parameters import Transform
 
 
 class Implicit(Entity, ABC):
@@ -17,9 +16,10 @@ class Implicit(Entity, ABC):
         if self.transform is not None:
             position = self.transform(position)
         values = self.forward(position)
+        values = self.transform.scale(values)
         if grad:
             grads = self.gradient(position)
-            grads = self.transform(grads, inv=True)
+            grads = self.transform.rotate(grads, inv=False)
             return values, grads
         return values
 
@@ -37,21 +37,14 @@ class SDF(Implicit, ABC):
 
 
 class Sphere(SDF):
-    def __init__(self, radius=1., *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.radius = FloatParameter('radius', radius, min=0, max=2)
-
     def forward(self, position):
-        return np.linalg.norm(position, axis=-1) - self.radius.value
+        return np.linalg.norm(position, axis=-1) - 1
 
     def gradient(self, position):
         return normalize(position)
 
 
 class Cube(SDF):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def forward(self, position):
         d = abs(position) - 1
         return (np.linalg.norm(np.maximum(d, 0), axis=-1) +
@@ -62,6 +55,16 @@ class Cube(SDF):
         outer = normalize(np.maximum(d, 0))
         inner = np.eye(position.shape[-1])[np.argmax(d, axis=-1)]
         return np.where((np.max(d, axis=-1) > 0)[..., None], outer, inner) * np.sign(position)
+
+
+class Cylinder(SDF):
+    def forward(self, position):
+        position[..., 1] = 0
+        return np.linalg.norm(position, axis=-1) - 1
+
+    def gradient(self, position):
+        position[..., 1] = 0
+        return normalize(position)
 
 
 class Plane(SDF):

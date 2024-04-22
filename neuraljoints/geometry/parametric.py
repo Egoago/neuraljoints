@@ -2,7 +2,8 @@ from abc import abstractmethod, ABC
 
 import numpy as np
 
-from neuraljoints.geometry.base import Entity, ControlPoints
+from neuraljoints.geometry.base import Entity
+from neuraljoints.geometry.explicit import PointCloud
 from neuraljoints.utils.parameters import Transform
 
 
@@ -12,12 +13,11 @@ class Parametric(Entity, ABC):
     def __init__(self, transform: Transform = None, **kwargs):
         super().__init__(**kwargs)
         self.transform = transform if transform is not None else Transform()
-        self.control_points = ControlPoints(count=self.CONTROL_POINT_COUNT)
+        self.control_points = PointCloud(count=self.CONTROL_POINT_COUNT)
 
     def __call__(self, parameter):
         position = self.forward(parameter)
         return self.transform(position, inv=False)
-
 
     @abstractmethod
     def forward(self, parameter):

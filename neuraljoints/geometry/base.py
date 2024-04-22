@@ -1,25 +1,23 @@
-from typing import List
-
-import numpy as np
-
 from neuraljoints.utils.parameters import Parameter
+from neuraljoints.utils.utils import RegisteredMeta
 
 
-class Entity:
+class Entity(metaclass=RegisteredMeta):
     __names = []
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, **kwargs):
         if name is None:
-            _name = self.__class__.__name__
+            name = self.__class__.__name__
+            name_ = name
             count = 2
-            while _name in Entity.__names:
-                _name = f'{name} {count}'
+            while name_ in Entity.__names:
+                name_ = f'{name} {count}'
                 count += 1
-            name = _name
+            name = name_
         if name not in Entity.__names:
             Entity.__names.append(name)
         self.name = name
-        super().__init__()
+        super().__init__(**kwargs)
 
     @property
     def hparams(self):
@@ -27,19 +25,25 @@ class Entity:
 
     @property
     def entities(self):
-        entities = [v for v in self.__dict__.values() if isinstance(v, Entity)]
-        # lists = [v for v in self.__dict__.values() if isinstance(v, List)]
-        # for list in lists:
-        #     if all(isinstance(item, Entity) for item in list):
-        #         entities += list
-        return entities
+        return [v for v in self.__dict__.values() if isinstance(v, Entity)]
 
 
-class ControlPoints(Entity):
-    def __init__(self, count=1, dim=3, **kwargs):
-        super().__init__(**kwargs)
-        self.count = count
-        self.points = np.zeros((count, dim), dtype=np.float32)
+class Set(Entity):
+    def __init__(self, children=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.children = set() if children is None else set(children)
 
-    def __getitem__(self, i):
-        return self.points[i]
+    def add(self, child):
+        self.children.add(child)
+
+    def remove(self, child):
+        self.children.remove(child)
+
+    def empty(self):
+        self.children = set()
+
+    def foreach(self, func):
+        return [func(c) for c in self.children]
+
+    def __contains__(self, child) -> bool:
+        return child in self.children
