@@ -3,15 +3,16 @@ import polyscope as ps
 from polyscope import imgui
 
 from neuraljoints.geometry.parametric import Parametric
-from neuraljoints.ui.wrappers.entity_wrapper import EntityWrapper
+from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper
 from neuraljoints.utils.math import normalize
 
 
 class ParametricWrapper(EntityWrapper):
+    TYPE = Parametric
     RESOLUTION = 100
 
-    def __init__(self, parametric: Parametric, **kwargs):
-        super().__init__(entity=parametric, **kwargs)
+    def __init__(self, object: TYPE, **kwargs):
+        super().__init__(object=object, **kwargs)
         self.show_curvature_comb = False
 
     @property

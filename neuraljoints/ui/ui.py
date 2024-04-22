@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 from polyscope import imgui
 import polyscope as ps
@@ -5,13 +7,16 @@ import polyscope as ps
 from neuraljoints.geometry.base import Entity
 from neuraljoints.ui.drawable import Drawable
 from neuraljoints.ui.io import IOHandler
-from neuraljoints.ui.wrappers import get_wrapper, ImplicitWrapper
+from neuraljoints.ui.wrappers.base_wrapper import get_wrapper
+from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
 from neuraljoints.ui.wrappers.parameter_wrapper import ParameterWrapper
+from neuraljoints.utils.utils import redirect_stdout
 
 
 class UIHandler:
     drawables: list[Drawable] = []
     show_origo = False
+    stdout = redirect_stdout()
 
     @classmethod
     def init(cls):
@@ -24,7 +29,7 @@ class UIHandler:
         # ps_plane.set_draw_plane(True)
         # ps_plane.set_draw_widget(True)
         ps.set_ground_plane_mode('none')
-        ps.load_color_map('blue-red', 'colormap.png')
+        ps.load_color_map('blue-red', 'media/colormap.png')
         io = imgui.GetIO()
         cls.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 25.)
         cls.__add_base_vectors()
@@ -36,7 +41,7 @@ class UIHandler:
             cls.add_entity(entity)
 
     @classmethod
-    def add_entity(cls, entity: Entity):    #TODO refactor
+    def add_entity(cls, entity: Entity):
         cls.drawables.append(get_wrapper(entity))
 
     @classmethod
@@ -53,10 +58,19 @@ class UIHandler:
         cls.__add_base_vectors()
 
         imgui.Text('Grid')
-        changed = ParameterWrapper.draw(ImplicitWrapper.RESOLUTION)   #TODO refactor
-        changed = ParameterWrapper.draw(ImplicitWrapper.BOUND) or changed
         imgui.SameLine()
-        changed = ParameterWrapper.draw(ImplicitWrapper.GRADIENT) or changed
+        changed = ParameterWrapper.draw(ImplicitWrapper.GRADIENT)
+        changed = ParameterWrapper.draw(ImplicitWrapper.RESOLUTION) or changed   #TODO refactor
+        changed = ParameterWrapper.draw(ImplicitWrapper.BOUNDS) or changed
+        changed = ParameterWrapper.draw(ImplicitWrapper.Z) or changed
+        ImplicitWrapper._changed = changed
+
+        if imgui.TreeNode('Output'):
+            imgui.BeginChild('Output', (0, 150), True)
+            output = cls.stdout.getvalue()
+            imgui.Text(output)
+            imgui.EndChild()
+            imgui.TreePop()
 
         for drawable in cls.drawables:
             drawable.draw(refresh=changed)
