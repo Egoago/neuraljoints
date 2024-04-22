@@ -2,6 +2,7 @@ from typing import Callable
 
 import numpy as np
 import polyscope as ps
+from polyscope import imgui
 
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
@@ -21,25 +22,29 @@ class ImplicitWrapper(EntityWrapper):
     _changed = False
     _points = None
     _grid = None
+    _selected = None
 
     @classmethod
-    def add_scalar_texture(cls, name: str, func: Callable):
+    def add_scalar_texture(cls, name: str, func: Callable = None, values: np.ndarray = None):
         scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
-                       'isolines_enabled': True, 'isoline_width': 0.05}
-        texture = func(cls.points).reshape(cls.RESOLUTION.value, cls.RESOLUTION.value)
-        cls.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv", **scalar_args)
+                       'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.8}
+        if values is None:
+            if func is None:
+                raise AttributeError('A callable function or the direct values have to provided.')
+            values = func(cls.points)
+        texture = values.reshape(cls.RESOLUTION.value, cls.RESOLUTION.value)
+        cls.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv",
+                                     enabled=cls._selected == name, **scalar_args)
 
     @classmethod
-    def add_color_texture(cls, name: str, func: Callable):
-        texture = func(cls.points).reshape(cls.RESOLUTION.value, cls.RESOLUTION.value, 3)
-        texture = (texture + 1) / 2
-        cls.mesh.add_color_quantity(name, texture, defined_on='texture', param_name="uv")
-
-    @classmethod
-    def add_vector_field(cls, name: str, func: Callable):
-        points = cls.points[::4, ::4].reshape(-1, 3)
-        vectors = func(points)
-        cls.grid.add_vector_quantity(name, vectors, radius=0.01, length=0.1, color=(0.1, 0.1, 0.1))
+    def add_vector_field(cls, name: str, func: Callable = None, values: np.ndarray = None):
+        points = cls.points[::2, ::2].reshape(-1, 3)
+        if values is None:
+            if func is None:
+                raise AttributeError('A callable function or the direct values have to provided.')
+            values = func(points)
+        cls.grid.add_vector_quantity(name, values, radius=0.01, length=0.1, color=(0.1, 0.1, 0.1),
+                                     enabled=cls._selected == name)
 
     @classmethod
     def change_check(cls):
@@ -99,20 +104,39 @@ class ImplicitWrapper(EntityWrapper):
     def implicit(self) -> Implicit:
         return self.object
 
+    def draw_ui(self) -> bool:
+        changed, select = imgui.Checkbox('', self.object.name == ImplicitWrapper._selected)
+        if select:
+            ImplicitWrapper._selected = self.object.name
+        imgui.SameLine()
+        super().draw_ui()
+        self.changed |= changed
+        return self.changed
+
     def draw_geometry(self):
         super().draw_geometry()
         if self.GRADIENT.value:
-            ImplicitWrapper.add_vector_field(self.implicit.name + ' grad', lambda p: self.implicit(p, grad=True)[-1])
+            ImplicitWrapper.add_vector_field(self.implicit.name, lambda p: self.implicit(p, grad=True)[-1])
         else:
-            ImplicitWrapper.add_scalar_texture(self.implicit.name, self.implicit)
+            self.grid.remove_quantity(self.implicit.name)
+        ImplicitWrapper.add_scalar_texture(self.implicit.name, self.implicit)
 
     def __del__(self):
-        self.mesh.remove_quantity(self.object.name)
-        self.grid.remove_quantity(self.object.name + ' grad')
+        self.mesh.remove_quantity(self.implicit.name)
+        self.grid.remove_quantity(self.implicit.name)
 
 
 class AggregateWrapper(SetWrapper, ImplicitWrapper):
     TYPE = Aggregate
+
+    def draw_ui(self) -> bool:
+        changed, select = imgui.Checkbox('', self.implicit.name == ImplicitWrapper._selected)
+        if select:
+            ImplicitWrapper._selected = self.implicit.name
+        imgui.SameLine()
+        super().draw_ui()
+        self.changed |= changed
+        return self.changed
 
     @classmethod
     @property

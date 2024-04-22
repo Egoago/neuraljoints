@@ -8,6 +8,7 @@ from polyscope import imgui
 import polyscope as ps
 
 from neuraljoints.geometry.implicit import Implicit
+from neuraljoints.neural.autograd import gradient
 from neuraljoints.neural.losses import CompositeLoss, Loss
 from neuraljoints.neural.model import Network
 from neuraljoints.neural.sampling import Sampler
@@ -47,14 +48,18 @@ class NetworkWrapper(EntityWrapper):
         return self.object
 
     def draw_ui(self) -> bool:
+        changed, select = imgui.Checkbox('', self.network.name == ImplicitWrapper._selected)
+        if select:
+            ImplicitWrapper._selected = self.object.name
+        imgui.SameLine()
         super().draw_ui()
-        k = self.object.hparams
+        self.changed |= changed
         return self.changed
 
     def draw_geometry(self):
         ImplicitWrapper.add_scalar_texture(self.network.name, self.network)
 
-        bounds = torch.tensor(ImplicitWrapper.BOUNDS.value, device='cuda', dtype=torch.float32)
+        bounds = torch.tensor(ImplicitWrapper.BOUNDS.value, device=self.network.device, dtype=torch.float32)
         res = ImplicitWrapper.RESOLUTION.value // 2
         with torch.no_grad():
             X, Y, Z = torch.meshgrid(torch.linspace(-bounds[0], bounds[0], res, device='cuda', dtype=torch.float32),
@@ -68,7 +73,23 @@ class NetworkWrapper(EntityWrapper):
             vertices, faces = cumcubes.marching_cubes(values, 0)
             vertices = vertices / res * 2 * bounds - bounds + bounds/res
 
-            ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),)
+            sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),)
+        if ImplicitWrapper.GRADIENT.value:
+            vertices.requires_grad = True
+            plane_points = ImplicitWrapper.points[::2, ::2].reshape(-1, 3)
+            plane_points = torch.tensor(plane_points.astype(np.float32), device=vertices.device)
+            positions = torch.cat([plane_points, vertices])
+
+            pred = self.network.model(positions)
+            gradients = gradient(pred, positions)
+
+            gradients = gradients.detach().cpu().numpy()
+            plane_grad = gradients[:len(plane_points)]
+            surface_grad = gradients[len(plane_points):]
+
+            ImplicitWrapper.add_vector_field(self.network.name, values=plane_grad)
+            sm.add_vector_quantity('Normals', surface_grad*0.1, vectortype='ambient', defined_on='vertices',
+                                   radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
 
 
 class SamplerWrapper(EntityWrapper):
