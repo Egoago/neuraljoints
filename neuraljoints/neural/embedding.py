@@ -27,7 +27,7 @@ class NoEmbedding(Embedding):
         return self.in_dims
 
     def forward(self, x):
-        return
+        return x
 
 
 class Embedding2D(Embedding):
