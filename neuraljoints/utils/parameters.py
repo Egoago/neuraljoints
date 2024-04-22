@@ -68,7 +68,6 @@ class ChoiceParameter(Parameter):
 
 
 class FloatParameter(Parameter):
-
     def __init__(self, name: str, value=0., min=-1., max=1., power=1.):
         super().__init__(name=name)
         self._value = value
@@ -83,7 +82,7 @@ class FloatParameter(Parameter):
 
     @value.setter
     def value(self, value):
-        self._value = value
+        self._value = min(max(value, self.min), self.max)
 
     def reset(self):
         self._value = self.initial
@@ -97,11 +96,24 @@ class IntParameter(FloatParameter):
 class Float3Parameter(FloatParameter):
     @property
     def value(self):
-        return np.array(self._value)
+        return np.array(self._value, dtype=float)
 
     @value.setter
     def value(self, value):
-        self._value = np.array(value)
+        self._value = np.clip(value, self.min, self.max).astype(dtype=float)
+
+
+class Int3Parameter(FloatParameter):
+    def __init__(self, name: str, value: list[int], min: int = 0, max: int = 100):
+        super().__init__(name=name, value=value, min=min, max=max)
+
+    @property
+    def value(self):
+        return np.array(self._value, dtype=int)
+
+    @value.setter
+    def value(self, value):
+        self._value = np.clip(value, self.min, self.max).astype(dtype=int)
 
 
 class Transform(Parameter):
@@ -110,7 +122,7 @@ class Transform(Parameter):
         if translation is None:
             translation = Float3Parameter('translation', np.zeros((3,)))
         if rotation is None:
-            rotation = Float3Parameter('rotation', np.zeros((3,)), min=-np.pi, max=np.pi)
+            rotation = Int3Parameter('rotation', np.zeros((3,)), min=-180, max=180)
         if scale is None:
             scale = FloatParameter('scale', 1, 0.01, 2)
         self.translation = translation
@@ -139,7 +151,7 @@ class Transform(Parameter):
         return points + t
 
     def rotate(self, points: np.ndarray, inv=False):
-        R = euler_to_rotation_matrix(self.rotation.value)
+        R = euler_to_rotation_matrix(np.radians(self.rotation.value))
         if inv:
             R = R.T
         return points @ R.T
@@ -152,3 +164,10 @@ class Transform(Parameter):
         self.translation.reset()
         self.rotation.reset()
         self.scale_param.reset()
+
+
+def class_parameter(parameter: Parameter):
+    def decorator(cls):
+        setattr(cls, parameter.name.upper(), parameter)
+        return cls
+    return decorator

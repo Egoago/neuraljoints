@@ -17,8 +17,9 @@ class ParameterWrapper:
         changed, value = imgui.Checkbox('', param.value)
         if changed:
             param.value = value
-        imgui.SameLine()
-        imgui.TextWrapped(f'{param.name:15}')
+        if param.name is not None:
+            imgui.SameLine()
+            imgui.TextWrapped(f'{param.name:15}')
         return changed
 
     @classmethod
@@ -34,8 +35,24 @@ class ParameterWrapper:
             param.reset()
             changed = True
 
+        if param.name is not None:
+            imgui.SameLine()
+            imgui.TextWrapped(f'{param.name:15}')
+        return changed
+
+    @classmethod
+    def __draw_slider(cls, param, value, changed):
+        if changed and (not imgui.IsAnyItemActive() or imgui.IsAnyMouseDown()):
+            param.value = value
+
         imgui.SameLine()
-        imgui.TextWrapped(f'{param.name:15}')
+        if imgui.Button("reset"):
+            param.reset()
+            changed = True
+
+        if param.name is not None:
+            imgui.SameLine()
+            imgui.TextWrapped(f'{param.name:15}')
         return changed
 
     @classmethod
@@ -43,33 +60,15 @@ class ParameterWrapper:
     def __draw(cls, param: params.FloatParameter) -> bool:
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderFloat('', param.value, format='%.5f',
-                                           v_min=param.min, v_max=param.max, power=-2)  #TODO
-        if changed:
-            param.value = value
-
-        imgui.SameLine()
-        if imgui.Button("reset"):
-            param.reset()
-            changed = True
-
-        imgui.SameLine()
-        imgui.TextWrapped(f'{param.name:15}')
-        return changed
+                                           v_min=param.min, v_max=param.max, power=param.power)
+        return cls.__draw_slider(param, value, changed)
 
     @classmethod
     @multidispatch(params.IntParameter)
     def __draw(cls, param: params.IntParameter) -> bool:
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderInt('', param.value, v_min=param.min, v_max=param.max)
-        imgui.SameLine()
-        imgui.TextWrapped(f'{param.name:15}')
-        if changed:
-            param.value = value
-        imgui.SameLine()
-        if imgui.Button("reset"):
-            param.reset()
-            changed = True
-        return changed
+        return cls.__draw_slider(param, value, changed)
 
     @classmethod
     @multidispatch(params.Float3Parameter)
@@ -77,25 +76,27 @@ class ParameterWrapper:
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderFloat3('', param.value.tolist(),
                                             v_min=param.min, v_max=param.max, power=param.power)
-        if changed:
-            param.value = value
+        return cls.__draw_slider(param, value, changed)
 
-        imgui.SameLine()
-        if imgui.Button("reset"):
-            param.reset()
-            changed = True
-
-        imgui.SameLine()
-        imgui.TextWrapped(f'{param.name:15}')
-        return changed
+    @classmethod
+    @multidispatch(params.Int3Parameter)
+    def __draw(cls, param: params.Int3Parameter) -> bool:
+        imgui.SetNextItemWidth(200)
+        changed, value = imgui.SliderInt3('', param.value.tolist(),
+                                            v_min=param.min, v_max=param.max)
+        return cls.__draw_slider(param, value, changed)
 
     @classmethod
     @multidispatch(params.Transform)
     def __draw(cls, param: params.Transform) -> bool:
         changed = False
-        if imgui.TreeNode(param.name):
-            changed = cls.draw(param.translation)
-            changed = cls.draw(param.rotation) or changed
-            changed = cls.draw(param.scale_param) or changed
-            imgui.TreePop()
+        imgui.SameLine()
+
+        if imgui.Button('transform'):
+            imgui.OpenPopup(param.id)
+        if imgui.BeginPopup(param.id):
+            changed |= cls.draw(param.translation)
+            changed |= cls.draw(param.rotation)
+            changed |= cls.draw(param.scale_param)
+            imgui.EndPopup()
         return changed
