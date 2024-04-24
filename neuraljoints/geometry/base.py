@@ -7,7 +7,7 @@ class Entity(metaclass=RegisteredMeta):
 
     def __init__(self, name=None, **kwargs):
         if name is None:
-            name = self.__class__.__name__
+            name = ''.join(map(lambda x: x if x.islower() else " "+x.lower(), self.__class__.__name__)).strip()
             name_ = name
             count = 2
             while name_ in Entity.__names:
@@ -20,17 +20,17 @@ class Entity(metaclass=RegisteredMeta):
         super().__init__(**kwargs)
 
     @property
-    def hparams(self):
+    def hparams(self):  # parameters name would be better but collides with torch.nn.Module.parameters
         return [v for v in self.__dict__.values() if isinstance(v, Parameter)]
 
-    @property
-    def entities(self):
-        return [v for v in self.__dict__.values() if isinstance(v, Entity)]
+    def __del__(self):
+        if hasattr(self, 'name') and self.name in Entity.__names:
+            Entity.__names.remove(self.name)
 
 
 class Set(Entity):
-    def __init__(self, children=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, children=None, **kwargs):
+        super().__init__(**kwargs)
         self.children = set() if children is None else set(children)
 
     def add(self, child):
@@ -47,3 +47,17 @@ class Set(Entity):
 
     def __contains__(self, child) -> bool:
         return child in self.children
+
+
+class Proxy(Entity):
+    def __init__(self, child=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._child = child
+
+    @property
+    def child(self):
+        return self._child
+
+    @child.setter
+    def child(self, child=None):
+        self._child = child

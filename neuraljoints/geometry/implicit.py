@@ -1,8 +1,9 @@
+import warnings
 from abc import ABC, abstractmethod
 
 import numpy as np
 
-from neuraljoints.geometry.base import Entity
+from neuraljoints.geometry.base import Entity, Proxy
 from neuraljoints.utils.math import normalize
 from neuraljoints.utils.parameters import Transform
 
@@ -16,20 +17,22 @@ class Implicit(Entity, ABC):
         if self.transform is not None:
             position = self.transform(position)
         values = self.forward(position)
-        values = self.transform.scale(values)
+        if self.transform is not None:
+            values = self.transform.scale(values)
         if grad:
             grads = self.gradient(position)
-            grads = self.transform.rotate(grads, inv=False)
+            if self.transform is not None:
+                grads = self.transform.rotate(grads, inv=False)
             return values, grads
         return values
 
-    @abstractmethod
     def forward(self, position):
-        pass
+        warnings.warn(f'Forward not implemented for {self.__class__}')
+        return np.zeros_like(position[..., 0])
 
-    @abstractmethod
     def gradient(self, position):
-        pass
+        warnings.warn(f'Gradient not implemented for {self.__class__}')
+        return np.zeros_like(position)
 
 
 class SDF(Implicit, ABC):
@@ -80,20 +83,37 @@ class Plane(SDF):
         return grad
 
 
-class ImplicitProxy(Implicit, ABC):
+class ImplicitProxy(Implicit, Proxy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.transform = None
 
 
-class SDFToUDF(ImplicitProxy):
-    def __init__(self, sdf: SDF, **kwargs):
-        super().__init__(**kwargs)
-        self.sdf = sdf
-
+class Inverse(ImplicitProxy):
     def forward(self, position):
-        return np.abs(self.sdf(position))
+        if self.child is not None:
+            return -self.child(position)
+        return np.zeros_like(position[..., 0])
 
     def gradient(self, position):
-        sdf = self.sdf(position)
-        raise self.sdf(position, 'gradient') * np.sign(sdf)[..., None]
+        if self.child is not None:
+            return -self.child(position, grad=True)[1]
+        return np.zeros_like(position)
+
+
+class SdfToUdf(ImplicitProxy):
+    @property
+    def sdf(self) -> SDF:
+        return self.child
+
+    def forward(self, position):
+        if self.child is not None:
+            return np.abs(self.child(position))
+        return np.zeros_like(position[..., 0])
+
+    def gradient(self, position):
+        if self.child is not None:
+            sdf = self.sdf(position)
+            return self.sdf(position, grad=True)[1] * np.sign(sdf)[..., None]
+        return np.zeros_like(position)
+

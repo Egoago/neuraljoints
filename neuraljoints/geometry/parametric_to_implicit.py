@@ -18,9 +18,6 @@ class ParametricToImplicitBrute(ImplicitProxy):
         points = self.parametric(parameters)
         return np.linalg.norm(position[:, None, :] - points[None, ...], axis=-1).min(axis=-1)
 
-    def gradient(self, position):
-        raise NotImplementedError()
-
 
 class ParametricToImplicitGWN(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
@@ -40,9 +37,6 @@ class ParametricToImplicitGWN(ImplicitProxy):
         angles = np.arctan2(np.linalg.norm(c, axis=-1),
                             np.einsum('ijk,ijk->ij', a, b))
         return angles.sum(axis=-1)/(2*np.pi)
-
-    def gradient(self, position):
-        raise NotImplementedError()
 
 
 class ParametricToImplicitNewton(ImplicitProxy):
@@ -87,9 +81,6 @@ class ParametricToImplicitNewton(ImplicitProxy):
         points = self.parametric(u)
         return np.linalg.norm(p - points, axis=-1)
 
-    def gradient(self, position):
-        raise NotImplementedError()
-
 
 class ParametricToImplicitBinary(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
@@ -131,67 +122,3 @@ class ParametricToImplicitBinary(ImplicitProxy):
             d_b[mask] = d_c[mask]
 
         return np.where(d_a < d_b, d_a, d_b)
-
-    def gradient(self, position):
-        raise NotImplementedError()
-
-
-class ParametricToImplicitNewtonBinary(ImplicitProxy):
-    def __init__(self, parametric: Parametric, **kwargs):
-        super().__init__(**kwargs)
-        self.parametric = parametric
-        self.iterations = IntParameter('iterations', value=3, min=0, max=300)
-        self.resolution = IntParameter('resolution', value=20, min=2, max=40)
-        self.band = FloatParameter('band', value=0.1, min=0.001, max=1)
-
-    def forward(self, p):
-        def dot(a, b):
-            return np.einsum('ij,ij->i', a, b)
-
-        # brute-force init
-        u = np.linspace(0, 1, self.resolution.value, dtype=np.float32)
-        c = self.parametric(u)
-        d = c[:, None, :] - p[None, ...]
-        u = u[np.argmin(np.einsum('ijk,ijk->ij', d, d), axis=0)]
-        u_a = u - self.band.value / 2
-        u_b = u + self.band.value / 2
-
-        u_ab = np.concatenate([u_a, u_b])
-        c_a, c_b = np.split(self.parametric(u_ab), 2)
-        cd_a, cd_b = np.split(self.parametric.gradient(u_ab), 2)
-        f_a = dot(cd_a, c_a - p)
-        f_b = dot(cd_b, c_b - p)
-
-        # switch
-        mask = f_a < f_b
-        u_c = np.where(mask, u_a, u_b)
-        u_b = np.where(~mask, u_a, u_b)
-        u_a = u_c
-        f_c = np.where(mask, f_a, f_b)
-        f_b = np.where(~mask, f_a, f_b)
-        f_a = f_c
-
-        mask = f_a < 0
-        for _ in range(self.iterations.value):
-            u = (u_a[mask] + u_b[mask]) / 2
-            c = self.parametric(u)
-            cd = self.parametric.gradient(u)
-            f = dot(cd, c - p[mask])
-
-            negative_f = (f_a[mask] < f) * (f < 0)
-            u_a[mask] = np.where(negative_f, u, u_a[mask])
-            f_a[mask] = np.where(negative_f, f, f_a[mask])
-            c_a[mask] = np.where(negative_f[:, None], c, c_a[mask])
-
-            positive_f = (0 < f) * (f < f_b[mask])
-            u_b[mask] = np.where(positive_f, u, u_b[mask])
-            f_b[mask] = np.where(positive_f, f, f_b[mask])
-            c_b[mask] = np.where(positive_f[:, None], c, c_b[mask])
-
-            mask[mask] = positive_f + negative_f
-
-        c = np.where((np.abs(f_a) < np.abs(f_b))[:, None], c_a, c_b)
-        return np.linalg.norm(c - p, axis=-1)
-
-    def gradient(self, position):
-        raise NotImplementedError()

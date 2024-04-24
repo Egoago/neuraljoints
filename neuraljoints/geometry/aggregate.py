@@ -40,7 +40,7 @@ class Union(Aggregate):
         return np.take_along_axis(gradients, indices[..., None, None], -2).squeeze()
 
 
-class Inverse(Union):
+class InverseUnion(Union):
     def reduce(self, values: [np.ndarray]):
         return -super().reduce(values)
 
