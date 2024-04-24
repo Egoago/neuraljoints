@@ -14,9 +14,9 @@ class ParameterWrapper:
     @classmethod
     @multidispatch(params.BoolParameter)
     def __draw(cls, param: params.BoolParameter) -> bool:
-        changed, value = imgui.Checkbox('', param.value)
-        if changed:
-            param.value = value
+        _, value = imgui.Checkbox('', param.value)
+        changed = value != param.value
+        param.value = value
         if param.name is not None:
             imgui.SameLine()
             imgui.TextWrapped(f'{param.name:15}')
@@ -26,6 +26,8 @@ class ParameterWrapper:
     @multidispatch(params.ChoiceParameter)
     def __draw(cls, param: params.ChoiceParameter) -> bool:
         index = param.choices.index(param.value)
+
+        imgui.SetNextItemWidth(200)
         changed, index = imgui.Combo('', index, param.choices)
         if changed:
             param.value = param.choices[index]

@@ -27,8 +27,8 @@ class Sampler(Entity):
 class ComplexSampler(Sampler):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.surface_ratio = FloatParameter('surface ratio', 0.5, 0., 1.)
-        self.noise_var = FloatParameter('noise var', 0.1, 1e-5, 1.)
+        self.surface_ratio = FloatParameter('surface ratio', 0.7, 0., 1.)
+        self.noise_var = FloatParameter('noise var', 0.05, 1e-5, 1.)
 
     def __call__(self):
         if self.prev_y is None or self.batch_size.value != len(self.prev_x):

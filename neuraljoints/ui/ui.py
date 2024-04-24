@@ -1,4 +1,4 @@
-import sys
+import time
 
 import numpy as np
 from polyscope import imgui
@@ -8,21 +8,22 @@ from neuraljoints.geometry.base import Entity
 from neuraljoints.ui.drawable import Drawable
 from neuraljoints.ui.io import IOHandler
 from neuraljoints.ui.wrappers.base_wrapper import get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
-from neuraljoints.ui.wrappers.parameter_wrapper import ParameterWrapper
+from neuraljoints.ui.wrappers.implicit_wrapper import IMPLICIT_PLANE
 from neuraljoints.utils.utils import redirect_stdout
 
 
 class UIHandler:
-    drawables: list[Drawable] = []
+    drawables: list[Drawable] = [IMPLICIT_PLANE]
     show_origo = False
     stdout = redirect_stdout()
+    last_draw = None
 
     @classmethod
     def init(cls):
         ps.init()
         ps.set_automatically_compute_scene_extents(False)
         ps.set_open_imgui_window_for_user_callback(False)
+        ps.set_build_default_gui_panels(False)
         # ps.set_navigation_style("planar")
         # ps_plane = ps.add_scene_slice_plane()
         # ps_plane.set_pose((0, 0, 0.05), (0, 0, -1))
@@ -57,13 +58,8 @@ class UIHandler:
         cls.show_origo = imgui.Checkbox('Show origo', cls.show_origo)[1]
         cls.__add_base_vectors()
 
-        imgui.Text('Grid')
         imgui.SameLine()
-        changed = ParameterWrapper.draw(ImplicitWrapper.GRADIENT)
-        changed = ParameterWrapper.draw(ImplicitWrapper.RESOLUTION) or changed   #TODO refactor
-        changed = ParameterWrapper.draw(ImplicitWrapper.BOUNDS) or changed
-        changed = ParameterWrapper.draw(ImplicitWrapper.Z) or changed
-        ImplicitWrapper._changed = changed
+        cls.__draw_fps()
 
         if imgui.TreeNode('Output'):
             imgui.BeginChild('Output', (0, 150), True)
@@ -73,7 +69,7 @@ class UIHandler:
             imgui.TreePop()
 
         for drawable in cls.drawables:
-            drawable.draw(refresh=changed)
+            drawable.draw(refresh=cls.drawables[0].changed)
         imgui.End()
 
     @classmethod
@@ -95,3 +91,10 @@ class UIHandler:
                 pc.add_vector_quantity(axis, np.array([vector]), color=vector, **kwargs)
         else:
             ps.remove_point_cloud("origo", False)
+
+    @classmethod
+    def __draw_fps(cls):
+        nanoseconds = time.time_ns()
+        if cls.last_draw is not None:
+            imgui.Text(f'{1e9 / (nanoseconds - cls.last_draw):.1f}fps')
+        cls.last_draw = nanoseconds

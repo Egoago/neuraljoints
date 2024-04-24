@@ -21,7 +21,7 @@ class Trainer(Entity):
         self.model = model.to(self.device)
         self.sampler = ComplexSampler()
         self.implicit = implicit
-        self.loss_fn = CompositeLoss(name='Losses')
+        self.loss_fn = CompositeLoss(name='losses')
         self.loss_fn.add(Mse())
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr.value)
         self.scheduler = LRScheduler(self.optimizer, self.lr)

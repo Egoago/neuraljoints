@@ -1,3 +1,5 @@
+import functools
+import operator
 import time
 from inspect import isabstract
 
@@ -10,12 +12,12 @@ import polyscope as ps
 from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.neural.autograd import gradient
 from neuraljoints.neural.losses import CompositeLoss, Loss
-from neuraljoints.neural.model import Network
+from neuraljoints.neural.model import Network, Layer
 from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
-from neuraljoints.utils.parameters import Parameter
+from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper, IMPLICIT_PLANE
+from neuraljoints.utils.parameters import Parameter, BoolParameter
 
 
 class NetworkWrapper(EntityWrapper):
@@ -29,7 +31,14 @@ class NetworkWrapper(EntityWrapper):
 
         @property
         def hparams(self):
-            return [v for v in self.model.__dict__.values() if isinstance(v, Parameter)]
+            def params(obj) -> list[Parameter]:
+                return [v for v in obj.__dict__.values() if isinstance(v, Parameter)]
+
+            layer_params = []
+            for layer in self.model.layers:
+                layer_params += params(layer)
+
+            return params(self.model) + layer_params
 
         def forward(self, position):
             with torch.no_grad():
@@ -42,54 +51,78 @@ class NetworkWrapper(EntityWrapper):
 
     def __init__(self, network: Network):
         super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
+        self.render_surface = BoolParameter('render surface', False)
 
     @property
     def network(self) -> ImplicitNetwork:
         return self.object
 
     def draw_ui(self) -> bool:
-        changed, select = imgui.Checkbox('', self.network.name == ImplicitWrapper._selected)
+        changed, select = imgui.Checkbox('', self.network.name == IMPLICIT_PLANE.selected)
         if select:
-            ImplicitWrapper._selected = self.object.name
+            IMPLICIT_PLANE.select(self.object.name)
+        elif self.network.name == IMPLICIT_PLANE.selected:
+            IMPLICIT_PLANE.select(None)
         imgui.SameLine()
         super().draw_ui()
+        # Handle model type change
+        init_schemes = Layer.get_subclass(self.network.model.layer.value).init_schemes
+        if set(init_schemes) != set(self.network.model.init_scheme.choices):
+            self.network.model.init_scheme.choices = init_schemes
+            self.network.model.init_scheme.initial = init_schemes[0]
+            self.network.model.init_scheme.value = init_schemes[0]
+        if self.network.model.layer.value == 'Siren':
+            init_scheme = self.network.model.init_scheme.value
+            if init_scheme == 'mfgi':
+                self.network.model.n_layers.min = 3
+                self.network.model.n_layers.value = max(self.network.model.n_layers.value, 3)
+                self.network.model.n_layers.initial = max(self.network.model.n_layers.initial, 3)
+            elif init_scheme == 'geometric':
+                self.network.model.n_layers.min = 2
+                self.network.model.n_layers.value = max(self.network.model.n_layers.value, 2)
+                self.network.model.n_layers.initial = max(self.network.model.n_layers.initial, 2)
+            else:
+                self.network.model.n_layers.min = 0
         self.changed |= changed
         return self.changed
 
     def draw_geometry(self):
-        ImplicitWrapper.add_scalar_texture(self.network.name, self.network)
+        IMPLICIT_PLANE.add_scalar_texture(self.network.name, self.network)
 
-        bounds = torch.tensor(ImplicitWrapper.BOUNDS.value, device=self.network.device, dtype=torch.float32)
-        res = ImplicitWrapper.RESOLUTION.value // 2
-        with torch.no_grad():
-            X, Y, Z = torch.meshgrid(torch.linspace(-bounds[0], bounds[0], res, device='cuda', dtype=torch.float32),
-                                     torch.linspace(-bounds[1], bounds[1], res, device='cuda', dtype=torch.float32),
-                                     torch.linspace(-bounds[2], bounds[2], res, device='cuda', dtype=torch.float32),
-                                     indexing="ij")
-            position = torch.stack([X, Y, Z], dim=-1)
+        if self.render_surface.value:
+            bounds = torch.tensor(IMPLICIT_PLANE.bounds.value, device=self.network.device, dtype=torch.float32)
+            res = IMPLICIT_PLANE.resolution.value // 2
+            with torch.no_grad():
+                X, Y, Z = torch.meshgrid(torch.linspace(-bounds[0], bounds[0], res, device='cuda', dtype=torch.float32),
+                                         torch.linspace(-bounds[1], bounds[1], res, device='cuda', dtype=torch.float32),
+                                         torch.linspace(-bounds[2], bounds[2], res, device='cuda', dtype=torch.float32),
+                                         indexing="ij")
+                position = torch.stack([X, Y, Z], dim=-1)
 
-            values = self.network.model(position)
+                values = self.network.model(position)
 
-            vertices, faces = cumcubes.marching_cubes(values, 0)
-            vertices = vertices / res * 2 * bounds - bounds + bounds/res
+                vertices, faces = cumcubes.marching_cubes(values, 0)
+                vertices = vertices / res * 2 * bounds - bounds + bounds/res
 
-            sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),)
-        if ImplicitWrapper.GRADIENT.value:
-            vertices.requires_grad = True
-            plane_points = ImplicitWrapper.points[::2, ::2].reshape(-1, 3)
-            plane_points = torch.tensor(plane_points.astype(np.float32), device=vertices.device)
-            positions = torch.cat([plane_points, vertices])
+                sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),)
+            if IMPLICIT_PLANE.gradient.value:
+                vertices.requires_grad = True
+                plane_points = IMPLICIT_PLANE.points[::4, ::4].reshape(-1, 3)
+                plane_points = torch.tensor(plane_points.astype(np.float32), device=vertices.device)
+                positions = torch.cat([plane_points, vertices])
 
-            pred = self.network.model(positions)
-            gradients = gradient(pred, positions)
+                pred = self.network.model(positions)
+                gradients = gradient(pred, positions)
 
-            gradients = gradients.detach().cpu().numpy()
-            plane_grad = gradients[:len(plane_points)]
-            surface_grad = gradients[len(plane_points):]
+                gradients = gradients.detach().cpu().numpy()
+                plane_grad = gradients[:len(plane_points)]
+                surface_grad = gradients[len(plane_points):]
 
-            ImplicitWrapper.add_vector_field(self.network.name, values=plane_grad)
-            sm.add_vector_quantity('Normals', surface_grad*0.1, vectortype='ambient', defined_on='vertices',
-                                   radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
+                IMPLICIT_PLANE.add_vector_field(self.network.name, values=plane_grad)
+                sm.add_vector_quantity('Normals', surface_grad*0.1, vectortype='ambient', defined_on='vertices',
+                                       radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
+        else:
+            ps.remove_surface_mesh("Surface", False)
 
 
 class SamplerWrapper(EntityWrapper):
@@ -98,14 +131,17 @@ class SamplerWrapper(EntityWrapper):
     def __init__(self, sampler: Sampler):
         super().__init__(object=sampler)
         self.grad = None
+        self.render_points = BoolParameter('render points', False)
 
     @property
     def sampler(self) -> Sampler:
         return self.object
 
     def draw_geometry(self):
-        if self.sampler.prev_x is not None:
+        if self.sampler.prev_x is not None and self.render_points.value:
             ps.register_point_cloud('sampled points', self.sampler.prev_x)
+        else:
+            ps.remove_point_cloud('sampled points', False)
 
 
 class CompositeLossWrapper(SetWrapper):
@@ -153,7 +189,7 @@ class TrainerWrapper(EntityWrapper):
             self.changed = True
 
         imgui.SameLine()
-        if imgui.Button('reset'):
+        if imgui.Button('rebuild'):
             self.trainer.reset()
             self.trainer.sampler.prev_y = None
             self.changed = True
@@ -167,11 +203,6 @@ class TrainerWrapper(EntityWrapper):
             imgui.PlotLines('', self.trainer.losses, graph_size=(0, 80))
             imgui.Text(f'Loss {self.trainer.losses[-1]:9.2e}')
 
-            nanoseconds = time.time_ns()
-            if self.last_draw is not None:
-                imgui.SameLine()
-                imgui.Text(f'{1e9/(nanoseconds - self.last_draw):.1f}fps')
-            self.last_draw = nanoseconds
         imgui.End()
         return self.changed
 

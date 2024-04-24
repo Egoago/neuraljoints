@@ -7,88 +7,76 @@ from polyscope import imgui
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit, ImplicitProxy
-from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper
-from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolParameter, Float3Parameter, class_parameter
+from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, ProxyWrapper
+from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolParameter, Float3Parameter
 
 
-@class_parameter(IntParameter('resolution', 100, 2, 200))
-@class_parameter(Float3Parameter('bounds', (2, 2, 2), 1, 10))
-@class_parameter(FloatParameter('z', 0, -1, 1))
-@class_parameter(BoolParameter('gradient', False))
-class ImplicitWrapper(EntityWrapper):
-    TYPE = Implicit
+class ImplicitPlane(EntityWrapper):
+    TYPE = None
 
-    _mesh = None
-    _changed = False
-    _points = None
-    _grid = None
-    _selected = None
+    def __init__(self):
+        super().__init__(object=Entity(name='Grid'))
+        self.resolution = IntParameter('resolution', 100, 2, 200)
+        self.bounds = Float3Parameter('bounds', (2, 2, 2), 1, 10)
+        self.z = FloatParameter('z', 0, -1, 1)
+        self.gradient = BoolParameter('gradient', False)
+        self._mesh = None
+        self._points = None
+        self._grid = None
+        self.selected = None
 
-    @classmethod
-    def add_scalar_texture(cls, name: str, func: Callable = None, values: np.ndarray = None):
+    def add_scalar_texture(self, name: str, func: Callable = None, values: np.ndarray = None):
+        if self.selected != name:
+            return
         scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
                        'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.8}
         if values is None:
             if func is None:
                 raise AttributeError('A callable function or the direct values have to provided.')
-            values = func(cls.points)
-        texture = values.reshape(cls.RESOLUTION.value, cls.RESOLUTION.value)
-        cls.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv",
-                                     enabled=cls._selected == name, **scalar_args)
+            values = func(self.points)
+        texture = values.reshape(self.resolution.value, self.resolution.value)
+        self.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv",
+                                      enabled=self.selected == name, **scalar_args)
 
-    @classmethod
-    def add_vector_field(cls, name: str, func: Callable = None, values: np.ndarray = None):
-        points = cls.points[::2, ::2].reshape(-1, 3)
+    def add_vector_field(self, name: str, func: Callable = None, values: np.ndarray = None):
+        if self.selected != name:
+            return
         if values is None:
             if func is None:
                 raise AttributeError('A callable function or the direct values have to provided.')
+            points = self.points[::4, ::4].reshape(-1, 3)
             values = func(points)
-        cls.grid.add_vector_quantity(name, values, radius=0.01, length=0.1, color=(0.1, 0.1, 0.1),
-                                     enabled=cls._selected == name)
+        self.grid.add_vector_quantity(name, values, radius=0.01, length=0.1, color=(0.1, 0.1, 0.1),
+                                      enabled=self.selected == name)
 
-    @classmethod
-    def change_check(cls):
-        if cls._changed:
-            cls._mesh = None
-            cls._changed = False
-            cls._points = None
-            cls._grid = None
-
-    @classmethod
     @property
-    def points(cls):
-        cls.change_check()
-        if cls._points is None:
-            cls._changed = False
-            bounds = cls.BOUNDS.value
-            res = cls.RESOLUTION.value
+    def points(self):
+        if self._points is None:
+            bounds = self.bounds.value
+            res = self.resolution.value
             x, y = np.meshgrid(np.linspace(-bounds[0], bounds[0], res),
                                np.linspace(bounds[1], -bounds[1], res))
-            z = np.ones_like(x) * cls.Z.value * bounds[2]
-            cls._points = np.stack([x, y, z], axis=-1)
-        return cls._points
+            z = np.ones_like(x) * self.z.value * bounds[2]
+            self._points = np.stack([x, y, z], axis=-1)
+        return self._points
 
-    @classmethod
     @property
-    def grid(cls) -> ps.PointCloud:
-        cls.change_check()
-        if ImplicitWrapper._grid is None:
-            points = cls.points[::4, ::4].reshape(-1, 3)
+    def grid(self) -> ps.PointCloud:
+        if self._grid is None:
+            points = self.points[::4, ::4].reshape(-1, 3)
 
-            ImplicitWrapper._grid = ps.register_point_cloud("Implicit grid", points, point_render_mode='quad')
-            ImplicitWrapper._grid.set_radius(0)
-        return ImplicitWrapper._grid
+            self._grid = ps.register_point_cloud("Implicit grid", points, point_render_mode='quad')
+            self._grid.set_radius(0)
+        return self._grid
 
-    @classmethod
     @property
-    def mesh(cls) -> ps.SurfaceMesh:
-        cls.change_check()
-        if ImplicitWrapper._mesh is None:
-            z = cls.Z.value
+    def mesh(self) -> ps.SurfaceMesh:
+        if self._mesh is None:
+            z = self.z.value
             vertices = np.array([[-1, 1, z],
                                  [1, 1, z],
                                  [1, -1, z],
-                                 [-1, -1, z]]) * cls.BOUNDS.value
+                                 [-1, -1, z]]) * self.bounds.value
 
             faces = np.arange(4).reshape((1, 4))
             uv = np.array([[0, 1],
@@ -96,18 +84,40 @@ class ImplicitWrapper(EntityWrapper):
                            [1, 0],
                            [0, 0]])
 
-            ImplicitWrapper._mesh = ps.register_surface_mesh("Implicit plane", vertices, faces)
-            ImplicitWrapper._mesh.add_parameterization_quantity("uv", uv, defined_on='vertices')
-        return ImplicitWrapper._mesh
+            self._mesh = ps.register_surface_mesh("Implicit plane", vertices, faces)
+            self._mesh.add_parameterization_quantity("uv", uv, defined_on='vertices')
+        return self._mesh
+
+    def select(self, name: str | None):
+        if name != self.selected and self.selected is not None:
+            self.mesh.remove_quantity(self.selected)
+            self.grid.remove_quantity(self.selected)
+        self.selected = name
+
+    def draw_ui(self):
+        super().draw_ui()
+        if self.changed:
+            self._mesh = None
+            self._points = None
+            self._grid = None
+
+
+IMPLICIT_PLANE = ImplicitPlane()  # easier than using singleton
+
+
+class ImplicitWrapper(EntityWrapper):
+    TYPE = Implicit
 
     @property
     def implicit(self) -> Implicit:
         return self.object
 
     def draw_ui(self) -> bool:
-        changed, select = imgui.Checkbox('', self.object.name == ImplicitWrapper._selected)
+        changed, select = imgui.Checkbox('', self.object.name == IMPLICIT_PLANE.selected)
         if select:
-            ImplicitWrapper._selected = self.object.name
+            IMPLICIT_PLANE.select(self.object.name)
+        elif self.object.name == IMPLICIT_PLANE.selected:
+            IMPLICIT_PLANE.select(None)
         imgui.SameLine()
         super().draw_ui()
         self.changed |= changed
@@ -115,24 +125,26 @@ class ImplicitWrapper(EntityWrapper):
 
     def draw_geometry(self):
         super().draw_geometry()
-        if self.GRADIENT.value:
-            ImplicitWrapper.add_vector_field(self.implicit.name, lambda p: self.implicit(p, grad=True)[-1])
+        if IMPLICIT_PLANE.gradient.value:
+            IMPLICIT_PLANE.add_vector_field(self.implicit.name, lambda p: self.implicit(p, grad=True)[-1])
         else:
-            self.grid.remove_quantity(self.implicit.name)
-        ImplicitWrapper.add_scalar_texture(self.implicit.name, self.implicit)
+            IMPLICIT_PLANE.grid.remove_quantity(self.implicit.name)
+        IMPLICIT_PLANE.add_scalar_texture(self.implicit.name, self.implicit)
 
     def __del__(self):
-        self.mesh.remove_quantity(self.implicit.name)
-        self.grid.remove_quantity(self.implicit.name)
+        IMPLICIT_PLANE.mesh.remove_quantity(self.implicit.name)
+        IMPLICIT_PLANE.grid.remove_quantity(self.implicit.name)
 
 
 class AggregateWrapper(SetWrapper, ImplicitWrapper):
     TYPE = Aggregate
 
     def draw_ui(self) -> bool:
-        changed, select = imgui.Checkbox('', self.implicit.name == ImplicitWrapper._selected)
+        changed, select = imgui.Checkbox('', self.object.name == IMPLICIT_PLANE.selected)
         if select:
-            ImplicitWrapper._selected = self.implicit.name
+            IMPLICIT_PLANE.select(self.object.name)
+        elif self.object.name == IMPLICIT_PLANE.selected:
+            IMPLICIT_PLANE.select(None)
         imgui.SameLine()
         super().draw_ui()
         self.changed |= changed
@@ -141,8 +153,32 @@ class AggregateWrapper(SetWrapper, ImplicitWrapper):
     @classmethod
     @property
     def choices(cls) -> set[Entity] | None:
-        return {c for c in Implicit.subclasses if not issubclass(c, ImplicitProxy)}
+        return Implicit.subclasses
 
     def draw_geometry(self):
         ImplicitWrapper.draw_geometry(self)
         SetWrapper.draw_geometry(self)
+
+
+class ImplicitProxyWrapper(ProxyWrapper, ImplicitWrapper):
+    TYPE = ImplicitProxy
+
+    def draw_ui(self) -> bool:  # TODO refactor
+        changed, select = imgui.Checkbox('', self.object.name == IMPLICIT_PLANE.selected)
+        if select:
+            IMPLICIT_PLANE.select(self.object.name)
+        elif self.object.name == IMPLICIT_PLANE.selected:
+            IMPLICIT_PLANE.select(None)
+        imgui.SameLine()
+        super().draw_ui()
+        self.changed |= changed
+        return self.changed
+
+    @classmethod
+    @property
+    def choices(cls) -> set[Entity] | None:
+        return Implicit.subclasses
+
+    def draw_geometry(self):
+        ImplicitWrapper.draw_geometry(self)
+        ProxyWrapper.draw_geometry(self)

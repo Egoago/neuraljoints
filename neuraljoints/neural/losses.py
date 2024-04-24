@@ -10,10 +10,6 @@ class Loss(Entity):
     _req_grad = False
     _req_hess = False
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = ''.join(map(lambda x: x if x.islower() else " "+x.lower(), self.__class__.__name__)).strip()
-
     @property
     def req_grad(self):
         return (self._req_grad or self._req_hess) and self.enabled
