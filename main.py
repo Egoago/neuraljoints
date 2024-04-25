@@ -15,8 +15,7 @@ if __name__ == "__main__":
     UIHandler.add_entity(trainer)
     UIHandler.add_entity(implicit)
 
-    ps.set_user_callback(lambda: UIHandler.update())
 
-    while True:
+    while UIHandler.open:
         trainer.update()
         ps.frame_tick()

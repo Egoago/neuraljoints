@@ -29,7 +29,7 @@ class ImplicitPlane(EntityWrapper):
         if self.selected != name:
             return
         scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
-                       'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.8}
+                       'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.9}
         if values is None:
             if func is None:
                 raise AttributeError('A callable function or the direct values have to provided.')

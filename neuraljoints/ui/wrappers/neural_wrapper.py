@@ -1,8 +1,3 @@
-import functools
-import operator
-import time
-from inspect import isabstract
-
 import cumcubes
 import numpy as np
 import torch
@@ -16,7 +11,7 @@ from neuraljoints.neural.model import Network, Layer
 from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper, IMPLICIT_PLANE
+from neuraljoints.ui.wrappers.implicit_wrapper import IMPLICIT_PLANE
 from neuraljoints.utils.parameters import Parameter, BoolParameter
 
 
@@ -52,6 +47,7 @@ class NetworkWrapper(EntityWrapper):
     def __init__(self, network: Network):
         super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
         self.render_surface = BoolParameter('render surface', False)
+        self.smooth = BoolParameter('smooth', False)
 
     @property
     def network(self) -> ImplicitNetwork:
@@ -104,7 +100,8 @@ class NetworkWrapper(EntityWrapper):
                 vertices, faces = cumcubes.marching_cubes(values, 0)
                 vertices = vertices / res * 2 * bounds - bounds + bounds/res
 
-                sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),)
+                sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),
+                                              smooth_shade=self.smooth.value)
             if IMPLICIT_PLANE.gradient.value:
                 vertices.requires_grad = True
                 plane_points = IMPLICIT_PLANE.points[::4, ::4].reshape(-1, 3)

@@ -17,6 +17,7 @@ class UIHandler:
     show_origo = False
     stdout = redirect_stdout()
     last_draw = None
+    open = False
 
     @classmethod
     def init(cls):
@@ -24,6 +25,7 @@ class UIHandler:
         ps.set_automatically_compute_scene_extents(False)
         ps.set_open_imgui_window_for_user_callback(False)
         ps.set_build_default_gui_panels(False)
+        ps.set_program_name('Neural Joints')
         # ps.set_navigation_style("planar")
         # ps_plane = ps.add_scene_slice_plane()
         # ps_plane.set_pose((0, 0, 0.05), (0, 0, -1))
@@ -32,9 +34,11 @@ class UIHandler:
         ps.set_ground_plane_mode('none')
         ps.load_color_map('blue-red', 'media/colormap.png')
         io = imgui.GetIO()
-        cls.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 25.)
-        cls.__add_base_vectors()
-        cls.__set_camera()
+        UIHandler.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 25.)
+        UIHandler.__set_camera()
+        UIHandler.open = True
+
+        ps.set_user_callback(lambda: UIHandler.update())
 
     @classmethod
     def add_entities(cls, entities: list[Entity]):
@@ -71,6 +75,9 @@ class UIHandler:
         for drawable in cls.drawables:
             drawable.draw(refresh=cls.drawables[0].changed)
         imgui.End()
+
+        if ps.window_requests_close():
+            UIHandler.open = False
 
     @classmethod
     def __set_camera(cls):
