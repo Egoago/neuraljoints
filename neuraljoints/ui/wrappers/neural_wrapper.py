@@ -12,7 +12,7 @@ from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
 from neuraljoints.ui.wrappers.implicit_wrapper import IMPLICIT_PLANE
-from neuraljoints.utils.parameters import Parameter, BoolParameter
+from neuraljoints.utils.parameters import Parameter, BoolParameter, FloatParameter
 
 
 class NetworkWrapper(EntityWrapper):
@@ -48,6 +48,7 @@ class NetworkWrapper(EntityWrapper):
         super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
         self.render_surface = BoolParameter('render surface', False)
         self.smooth = BoolParameter('smooth', False)
+        self.isosurface = FloatParameter('isosurface', 0, -1, 1)
 
     @property
     def network(self) -> ImplicitNetwork:
@@ -97,7 +98,7 @@ class NetworkWrapper(EntityWrapper):
 
                 values = self.network.model(position)
 
-                vertices, faces = cumcubes.marching_cubes(values, 0)
+                vertices, faces = cumcubes.marching_cubes(values, self.isosurface.value)
                 vertices = vertices / res * 2 * bounds - bounds + bounds/res
 
                 sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),
