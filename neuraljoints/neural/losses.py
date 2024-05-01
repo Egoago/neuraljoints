@@ -146,6 +146,18 @@ class HessianDet(WeightedLoss):
         return torch.abs(determinants)
 
 
+class GaussianCurvature(WeightedLoss):
+    _req_hess = True
+
+    def energy(self, x, y, pred, y_grad=None, grad=None, hess=None):
+        mat = torch.cat([hess, grad[..., None]], -1)
+        row = torch.cat([grad, torch.zeros_like(grad[..., 0])[..., None]], -1)
+        mat = torch.cat([mat, row[..., None, :]], -2)
+        determinants = torch.linalg.det(mat)
+        norm_4 = (grad**2).sum(dim=-1)**2
+        return - determinants / norm_4
+
+
 class HessianAlign(WeightedLoss):
     _req_grad = True
     _req_hess = True
