@@ -12,11 +12,41 @@ from neuraljoints.ui.wrappers.implicit_wrapper import IMPLICIT_PLANE
 from neuraljoints.utils.utils import redirect_stdout
 
 
+class FPSCounter:
+    BUFFER = 30
+
+    def __init__(self):
+        self.prev_time = time.time_ns()
+        self.fps_list = [0.]
+
+    @property
+    def current_fps(self):
+        return self.fps_list[-1]
+
+    @property
+    def smooth_fps(self):
+        return sum(self.fps_list) / len(self.fps_list)
+
+    @property
+    def min_fps(self):
+        return min(self.fps_list)
+
+    def __str__(self):
+        return f'Fps: {self.current_fps:.1f}/{self.smooth_fps:.0f}/{self.min_fps:.0f}'
+
+    def update(self):
+        nanoseconds = time.time_ns()
+        fps = 1e9 / (nanoseconds - self.prev_time)
+        self.prev_time = nanoseconds
+        self.fps_list.append(fps)
+        self.fps_list = self.fps_list[-FPSCounter.BUFFER:]
+
+
 class UIHandler:
     drawables: list[Drawable] = [IMPLICIT_PLANE]
     show_origo = False
     stdout = redirect_stdout()
-    last_draw = None
+    fps_counter = FPSCounter()
     open = False
 
     @classmethod
@@ -26,11 +56,6 @@ class UIHandler:
         ps.set_open_imgui_window_for_user_callback(False)
         ps.set_build_default_gui_panels(False)
         ps.set_program_name('Neural Joints')
-        # ps.set_navigation_style("planar")
-        # ps_plane = ps.add_scene_slice_plane()
-        # ps_plane.set_pose((0, 0, 0.05), (0, 0, -1))
-        # ps_plane.set_draw_plane(True)
-        # ps_plane.set_draw_widget(True)
         ps.set_ground_plane_mode('none')
         ps.load_color_map('blue-red', 'media/colormap.png')
         io = imgui.GetIO()
@@ -62,8 +87,8 @@ class UIHandler:
         cls.show_origo = imgui.Checkbox('Show origo', cls.show_origo)[1]
         cls.__add_base_vectors()
 
-        imgui.SameLine()
-        cls.__draw_fps()
+        cls.fps_counter.update()
+        imgui.Text(str(cls.fps_counter))
 
         if imgui.TreeNode('Output'):
             imgui.BeginChild('Output', (0, 150), True)
@@ -98,10 +123,3 @@ class UIHandler:
                 pc.add_vector_quantity(axis, np.array([vector]), color=vector, **kwargs)
         else:
             ps.remove_point_cloud("origo", False)
-
-    @classmethod
-    def __draw_fps(cls):
-        nanoseconds = time.time_ns()
-        if cls.last_draw is not None:
-            imgui.Text(f'{1e9 / (nanoseconds - cls.last_draw):.1f}fps')
-        cls.last_draw = nanoseconds
