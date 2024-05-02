@@ -5,7 +5,7 @@ from typing import Union, Tuple
 import torch
 
 from neuraljoints.geometry.base import Entity, Proxy
-from neuraljoints.utils.parameters import Transform
+from neuraljoints.utils.parameters import Transform, FloatParameter, Float3Parameter
 
 
 class Implicit(Entity, ABC):
@@ -38,30 +38,42 @@ class SDF(Implicit, ABC):
 
 
 class Sphere(SDF):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.radius = FloatParameter('radius', 1., 1e-5, 2.)
+
     def forward(self, position):
-        return torch.linalg.norm(position, dim=-1) - 1
+        return torch.linalg.norm(position, dim=-1) - self.radius.value
 
     def gradient(self, position):
         return torch.nn.functional.normalize(position, dim=-1)
 
 
 class Cube(SDF):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size = FloatParameter('size', 2., 1e-5, 4.)
+
     def forward(self, position):
-        d = abs(position) - 1
+        d = abs(position) - self.size.value/2.
         return (torch.linalg.norm(torch.clamp(d, min=0), dim=-1) +
                 torch.clamp(torch.amax(d, dim=-1), max=0))
 
     def gradient(self, position):
-        d = abs(position) - 1
+        d = abs(position) - self.size.value/2.
         outer = torch.nn.functional.normalize(torch.clamp(d, min=0), dim=-1)
         inner = torch.eye(position.shape[-1], device=position.device, dtype=position.dtype)[torch.argmax(d, dim=-1)]
         return torch.where((torch.amax(d, dim=-1) > 0)[..., None], outer, inner) * torch.sign(position)
 
 
 class Cylinder(SDF):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.radius = FloatParameter('radius', 1., 1e-5, 2.)
+
     def forward(self, position):
         position[..., 1] = 0
-        return torch.linalg.norm(position, dim=-1) - 1
+        return torch.linalg.norm(position, dim=-1) - self.radius.value
 
     def gradient(self, position):
         position[..., 1] = 0

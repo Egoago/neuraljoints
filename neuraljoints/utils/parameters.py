@@ -96,11 +96,11 @@ class IntParameter(FloatParameter):
 class Float3Parameter(FloatParameter):
     def __init__(self, name: str, value: list[float], min: int = -1., max: int = 1.):
         assert isinstance(value, list)
-        super().__init__(name=name, value=value, min=min, max=max)
+        super().__init__(name=name, value=torch.tensor(value, dtype=torch.float32), min=min, max=max)
 
     @property
     def value(self) -> torch.Tensor:
-        return torch.tensor(self._value, dtype=torch.float32)
+        return self._value
 
     @value.setter
     def value(self, value):
@@ -111,11 +111,11 @@ class Float3Parameter(FloatParameter):
 class Int3Parameter(FloatParameter):
     def __init__(self, name: str, value: list[int], min: int = 0, max: int = 100):
         assert isinstance(value, list)
-        super().__init__(name=name, value=value, min=min, max=max)
+        super().__init__(name=name, value=torch.tensor(value, dtype=torch.int), min=min, max=max)
 
     @property
     def value(self) -> torch.Tensor:
-        return torch.tensor(self._value, dtype=torch.int)
+        return self._value
 
     @value.setter
     def value(self, value):
@@ -140,12 +140,12 @@ class Transform(Parameter):
 
         if vector:
             if inv:
-                return (points - t) @ R
-            return (points @ R.T) + t
-        else:
-            if inv:
                 return points @ R
             return points @ R.T
+        else:
+            if inv:
+                return (points - t) @ R
+            return (points @ R.T) + t
 
     @property
     def matrix(self):

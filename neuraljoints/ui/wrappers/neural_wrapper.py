@@ -1,5 +1,3 @@
-import cumcubes
-import torch
 from polyscope import imgui
 import polyscope as ps
 
@@ -40,7 +38,6 @@ class NetworkWrapper(ImplicitWrapper):
             position.requires_grad = True
             pred = self.model(position)
             return gradient(pred, position)
-
 
     def __init__(self, network: Network):
         super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
@@ -134,12 +131,14 @@ class TrainerWrapper(EntityWrapper):
         imgui.SameLine()
         if imgui.Button('render') or (self.trainer.training and self.trainer.step % 5 == 0):
             self.changed = True
+            self.network_wrapper.changed = True
 
         imgui.SameLine()
         if imgui.Button('rebuild'):
             self.trainer.reset()
             self.trainer.sampler.prev_y = None
             self.changed = True
+            self.network_wrapper.changed = True
 
         if self.trainer.training:
             ratio = self.trainer.step / self.trainer.max_steps.value
