@@ -10,11 +10,11 @@ from neuraljoints.neural.model import Network, Layer
 from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import IMPLICIT_PLANE
-from neuraljoints.utils.parameters import Parameter, BoolParameter, FloatParameter
+from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
+from neuraljoints.utils.parameters import Parameter, BoolParameter
 
 
-class NetworkWrapper(EntityWrapper):
+class NetworkWrapper(ImplicitWrapper):
     TYPE = Network
 
     class ImplicitNetwork(Implicit):    # TODO refactor
@@ -33,30 +33,23 @@ class NetworkWrapper(EntityWrapper):
 
             return params(self.model) + layer_params
 
-        @torch.no_grad()
         def forward(self, position):
             return self.model(position)
 
-        def gradient(self, position):
-            raise NotImplementedError()
+        def gradient(self, position):   # TODO refactor
+            position.requires_grad = True
+            pred = self.model(position)
+            return gradient(pred, position)
+
 
     def __init__(self, network: Network):
         super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
-        self.render_surface = BoolParameter('render surface', False)
-        self.smooth = BoolParameter('smooth', False)
-        self.isosurface = FloatParameter('isosurface', 0, -1, 1)
 
     @property
     def network(self) -> ImplicitNetwork:
         return self.object
 
     def draw_ui(self) -> bool:
-        changed, select = imgui.Checkbox('', self.network.name == IMPLICIT_PLANE.selected)
-        if select:
-            IMPLICIT_PLANE.select(self.object.name)
-        elif self.network.name == IMPLICIT_PLANE.selected:
-            IMPLICIT_PLANE.select(None)
-        imgui.SameLine()
         super().draw_ui()
         # Handle model type change
         init_schemes = Layer.get_subclass(self.network.model.layer.value).init_schemes
@@ -76,46 +69,7 @@ class NetworkWrapper(EntityWrapper):
                 self.network.model.n_layers.initial = max(self.network.model.n_layers.initial, 2)
             else:
                 self.network.model.n_layers.min = 0
-        self.changed |= changed
         return self.changed
-
-    def draw_geometry(self):
-        IMPLICIT_PLANE.add_scalar_texture(self.network.name, self.network)
-
-        if self.render_surface.value:
-            bounds = torch.tensor(IMPLICIT_PLANE.bounds.value, device=self.network.device, dtype=torch.float32)
-            res = IMPLICIT_PLANE.resolution.value // 2
-            with torch.no_grad():
-                X, Y, Z = torch.meshgrid(torch.linspace(-bounds[0], bounds[0], res, device='cuda', dtype=torch.float32),
-                                         torch.linspace(-bounds[1], bounds[1], res, device='cuda', dtype=torch.float32),
-                                         torch.linspace(-bounds[2], bounds[2], res, device='cuda', dtype=torch.float32),
-                                         indexing="ij")
-                position = torch.stack([X, Y, Z], dim=-1)
-
-                values = self.network.model(position)
-
-                vertices, faces = cumcubes.marching_cubes(values, self.isosurface.value)
-                vertices = vertices / res * 2 * bounds - bounds + bounds/res
-
-                sm = ps.register_surface_mesh("Surface", vertices.cpu().numpy(), faces.cpu().numpy(),
-                                              smooth_shade=self.smooth.value)
-            if IMPLICIT_PLANE.gradient.value:
-                vertices.requires_grad = True
-                plane_points = IMPLICIT_PLANE.get_points(self.network.device)[::4, ::4].reshape(-1, 3)
-                positions = torch.cat([plane_points, vertices])
-
-                pred = self.network.model(positions)
-                gradients = gradient(pred, positions)
-
-                gradients = gradients
-                plane_grad = gradients[:len(plane_points)]
-                surface_grad = gradients[len(plane_points):].detach().cpu().numpy()
-
-                IMPLICIT_PLANE.add_vector_field(self.network.name, values=plane_grad)
-                sm.add_vector_quantity('Normals', surface_grad*0.1, vectortype='ambient', defined_on='vertices',
-                                       radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
-        else:
-            ps.remove_surface_mesh("Surface", False)
 
 
 class SamplerWrapper(EntityWrapper):

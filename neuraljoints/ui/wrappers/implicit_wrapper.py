@@ -1,5 +1,6 @@
 from typing import Union
 
+import cumcubes
 import numpy as np
 import torch
 import polyscope as ps
@@ -8,6 +9,7 @@ from polyscope import imgui
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit, ImplicitProxy
+from neuraljoints.neural.autograd import gradient
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, ProxyWrapper
 from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolParameter, Float3Parameter
 
@@ -21,6 +23,9 @@ class ImplicitPlane(EntityWrapper):
         self.bounds = Float3Parameter('bounds', [2, 2, 2], 1, 10)
         self.z = FloatParameter('z', 0, -1, 1)
         self.gradient = BoolParameter('gradient', False)
+        self.surface = BoolParameter('surface', False)
+        self.smooth = BoolParameter('smooth', False)
+        self.isosurface = FloatParameter('isosurface', 0, -1, 1)
         self._mesh = None
         self._points = None
         self._grid = None
@@ -34,7 +39,7 @@ class ImplicitPlane(EntityWrapper):
                        'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.9}
         if values is None:
             if implicit is None:
-                raise AttributeError('An implicie function or the direct values have to provided.')
+                raise AttributeError('An implicit function or the direct values have to provided.')
             values = implicit(self.get_points(implicit.device)).detach().cpu().numpy()
         values = values.reshape(self.resolution.value, self.resolution.value)
         if isinstance(values, torch.Tensor):
@@ -50,9 +55,13 @@ class ImplicitPlane(EntityWrapper):
             if implicit is None:
                 raise AttributeError('An implicit function or the direct values have to provided.')
             points = self.get_points(implicit.device)[::4, ::4].reshape(-1, 3)
-            values = implicit(points).detach().cpu().numpy()
+            values = implicit(points)
         if isinstance(values, torch.Tensor):
             values = values.detach().cpu().numpy()
+        if values.ndim != 2:
+            if values.size // 3 != self.grid.n_points():    # TODO refactor
+                values = values[::4, ::4]
+            values = values.reshape(-1, 3)
         self.grid.add_vector_quantity(name, values, radius=0.01, length=0.1, color=(0.1, 0.1, 0.1),
                                       enabled=self.selected == name)
 
@@ -108,6 +117,36 @@ class ImplicitPlane(EntityWrapper):
             self._points = None
             self._grid = None
 
+    def add_surface(self, implicit: Implicit):
+        if self.selected != implicit.name:
+            ps.remove_surface_mesh(implicit.name, False)
+            return
+        with torch.no_grad():
+            bounds = torch.tensor(IMPLICIT_PLANE.bounds.value, device=implicit.device, dtype=torch.float32)
+            res = IMPLICIT_PLANE.resolution.value // 2
+            X, Y, Z = torch.meshgrid(torch.linspace(-bounds[0], bounds[0], res, device=implicit.device, dtype=torch.float32),
+                                     torch.linspace(-bounds[1], bounds[1], res, device=implicit.device, dtype=torch.float32),
+                                     torch.linspace(-bounds[2], bounds[2], res, device=implicit.device, dtype=torch.float32),
+                                     indexing="ij")
+            position = torch.stack([X, Y, Z], dim=-1)
+
+            values = implicit(position)
+
+            vertices, faces = cumcubes.marching_cubes(values, self.isosurface.value)
+            vertices = vertices / res * 2 * bounds - bounds + bounds / res
+
+        sm = ps.register_surface_mesh(implicit.name, vertices.cpu().numpy(), faces.cpu().numpy(),
+                                      smooth_shade=self.smooth.value)
+
+        if self.gradient.value:
+            vertices.requires_grad = True
+            values = implicit(vertices)
+            gradients = gradient(values, vertices)
+
+            sm.add_vector_quantity('Normals', (gradients * 0.1).detach().cpu().numpy(),
+                                   vectortype='ambient', defined_on='vertices',
+                                   radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
+
 
 IMPLICIT_PLANE = ImplicitPlane()  # easier than using singleton
 
@@ -130,7 +169,7 @@ class ImplicitWrapper(EntityWrapper):
         self.changed |= changed
         return self.changed
 
-    def draw_geometry(self):
+    def draw_geometry(self):    # TODO refactor
         super().draw_geometry()
         values = self.implicit(IMPLICIT_PLANE.get_points(self.implicit.device), grad=IMPLICIT_PLANE.gradient.value)
         if IMPLICIT_PLANE.gradient.value:
@@ -138,11 +177,16 @@ class ImplicitWrapper(EntityWrapper):
             IMPLICIT_PLANE.add_vector_field(self.implicit.name, values=grad)
         else:
             IMPLICIT_PLANE.grid.remove_quantity(self.implicit.name)
+        if IMPLICIT_PLANE.surface.value:
+            IMPLICIT_PLANE.add_surface(self.implicit)
+        else:
+            ps.remove_surface_mesh(self.implicit.name, False)
         IMPLICIT_PLANE.add_scalar_texture(self.implicit.name, values=values)
 
     def __del__(self):
         IMPLICIT_PLANE.mesh.remove_quantity(self.implicit.name)
         IMPLICIT_PLANE.grid.remove_quantity(self.implicit.name)
+        ps.remove_surface_mesh(self.implicit.name, False)
 
 
 class AggregateWrapper(SetWrapper, ImplicitWrapper):
