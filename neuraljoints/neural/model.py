@@ -5,7 +5,7 @@ import torch
 
 from neuraljoints.geometry.base import Entity
 from neuraljoints.neural.embedding import NoEmbedding
-from neuraljoints.utils.parameters import IntParameter, ChoiceParameter
+from neuraljoints.utils.parameters import IntParameter, ChoiceParameter, Parameter, FloatParameter
 from neuraljoints.utils.utils import RegisteredMeta
 
 
@@ -19,6 +19,11 @@ class Network(Entity, torch.nn.Module):
         self.init_scheme = ChoiceParameter('init', Siren.init_schemes[0], ReLU.init_schemes)
         self.mlp = self.build()
         self.layers = []
+
+    @property
+    def hparams(self):
+        attributes = list(self.__dict__.values()) + list(Layer.get_subclass(self.layer.value).__dict__.values())
+        return [v for v in attributes if isinstance(v, Parameter)]
 
     def build(self):
         self.layers = []
@@ -118,15 +123,23 @@ class ReLU(LinearLayer):
         super().__init__(in_dim, out_dim, **kwargs)
 
 
+class SoftPlus(LinearLayer):
+    BETA = FloatParameter('beta', 5., 1e-5, 10.)
+
+    def __init__(self, in_dim, out_dim, **kwargs):
+        kwargs['activation'] = torch.nn.Softplus(self.BETA.value)
+        super().__init__(in_dim, out_dim, **kwargs)
+
+
 class Sine(torch.nn.Module):
-    W0 = 30.
+    W0 = FloatParameter('frequency', 30., 1., 30.)
 
     def forward(self, x):
-        return torch.sin(Sine.W0 * x)
+        return torch.sin(Sine.W0.value * x)
 
 
 class Siren(LinearLayer):
-    MFGI_RADIUS = 1.
+    MFGI_RADIUS = FloatParameter('mfgi radius', 1., 1e-3, 4.)
     C = 6.
 
     def __init__(self, in_dim, out_dim, **kwargs):
@@ -134,15 +147,15 @@ class Siren(LinearLayer):
         super().__init__(in_dim, out_dim, **kwargs)
 
     def init_uniform(self, std=None, bias_std=None):
-        std = math.sqrt(Siren.C / self.in_dim) / Sine.W0
+        std = math.sqrt(Siren.C / self.in_dim) / Sine.W0.value
         super().init_uniform(std)
 
     def init_uniform_first(self):
         super().init_uniform(1. / self.in_dim)
 
     def init_geom(self):
-        std = math.sqrt(3. / self.out_dim) / Sine.W0
-        bias_std = 1. / (self.out_dim * 1000 * Sine.W0)
+        std = math.sqrt(3. / self.out_dim) / Sine.W0.value
+        bias_std = 1. / (self.out_dim * 1000 * Sine.W0.value)
         super().init_uniform(std, bias_std)
 
     @torch.no_grad()
@@ -151,16 +164,16 @@ class Siren(LinearLayer):
         device = self.linear.weight.device
         dtype = self.linear.weight.dtype
         self.linear.weight.data = (0.5 * torch.pi * torch.eye(self.out_dim, device=device, dtype=dtype) +
-                                   0.001 * torch.randn(self.out_dim, self.out_dim, device=device, dtype=dtype)) / Sine.W0
+                                   0.001 * torch.randn(self.out_dim, self.out_dim, device=device, dtype=dtype)) / Sine.W0.value
         if self.linear.bias is not None:
             self.linear.bias.data = (0.5 * torch.pi * torch.ones(self.out_dim, device=device, dtype=dtype) +
-                                     0.001 * torch.randn(self.out_dim, device=device, dtype=dtype)) / Sine.W0
+                                     0.001 * torch.randn(self.out_dim, device=device, dtype=dtype)) / Sine.W0.value
 
     @torch.no_grad()
     def init_mfgi_first(self):
         self.init_geom()
         index = int(self.out_dim * 0.25)
-        self.linear.weight.data[index:] = self.linear.weight.data[index:] * Sine.W0
+        self.linear.weight.data[index:] = self.linear.weight.data[index:] * Sine.W0.value
 
     @torch.no_grad()
     def init_mfgi_second(self):
@@ -223,7 +236,7 @@ class Siren(LinearLayer):
                 def forward(self, x):
                     x = self.linear(x)
                     x = torch.sign(x) * torch.sqrt(x.abs() + 1e-8)
-                    x = x - Siren.MFGI_RADIUS
+                    x = x - Siren.MFGI_RADIUS.value
                     return x
             return GeomLast(linear)
         return super().init_linear(linear, scheme)

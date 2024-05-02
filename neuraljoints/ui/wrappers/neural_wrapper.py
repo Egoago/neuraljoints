@@ -9,7 +9,7 @@ from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
 from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
-from neuraljoints.utils.parameters import Parameter, BoolParameter
+from neuraljoints.utils.parameters import BoolParameter
 
 
 class NetworkWrapper(ImplicitWrapper):
@@ -22,14 +22,7 @@ class NetworkWrapper(ImplicitWrapper):
 
         @property
         def hparams(self):
-            def params(obj) -> list[Parameter]:
-                return [v for v in obj.__dict__.values() if isinstance(v, Parameter)]
-
-            layer_params = []
-            for layer in self.model.layers:
-                layer_params += params(layer)
-
-            return params(self.model) + layer_params
+            return self.model.hparams
 
         def forward(self, position):
             return self.model(position)
