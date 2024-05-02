@@ -149,13 +149,29 @@ class HessianDet(WeightedLoss):
 class GaussianCurvature(WeightedLoss):
     _req_hess = True
 
-    def energy(self, x, y, pred, y_grad=None, grad=None, hess=None):
+    def curvature(self, hess, grad):
         mat = torch.cat([hess, grad[..., None]], -1)
         row = torch.cat([grad, torch.zeros_like(grad[..., 0])[..., None]], -1)
         mat = torch.cat([mat, row[..., None, :]], -2)
         determinants = torch.linalg.det(mat)
-        norm_4 = (grad**2).sum(dim=-1)**2
+        norm_4 = (grad ** 2).sum(dim=-1) ** 2
         return - determinants / norm_4
+
+    def energy(self, x, y, pred, y_grad=None, grad=None, hess=None):
+        curvature = self.curvature(hess, grad)
+        return curvature.abs()
+
+
+class DoubleThrough(GaussianCurvature):
+
+    @staticmethod
+    def double_through(x):
+        pi = torch.pi
+        return (64*pi-80)/(pi**4)*(x**4) - (64*pi-88)/(pi**3)*(x**3) + (16*pi-29)/(pi**2)*(x**2) + 3*x/pi
+
+    def energy(self, x, y, pred, y_grad=None, grad=None, hess=None):
+        energy = super().energy(x, y, pred, y_grad, grad, hess)
+        return DoubleThrough.double_through(energy)
 
 
 class HessianAlign(WeightedLoss):
