@@ -5,7 +5,7 @@ from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.neural.autograd import hessian, gradient
 from neuraljoints.neural.losses import CompositeLoss, Mse
 from neuraljoints.neural.model import Network
-from neuraljoints.neural.sampling import Sampler, ComplexSampler
+from neuraljoints.neural.sampling import ComplexSampler
 from neuraljoints.neural.scheduler import LRScheduler
 from neuraljoints.utils.parameters import IntParameter, FloatParameter
 
@@ -15,9 +15,8 @@ class Trainer(Entity):
         implicit.name = 'Target'
         super().__init__(**kwargs)
         self.max_steps = IntParameter('max_steps', 10000, 1, 10000)
-        self.lr = FloatParameter('lr', 5e-3, 1e-7, 0.1)
+        self.lr = FloatParameter('lr', 1e-4, 1e-7, 0.1)
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = model.to(self.device)
         self.sampler = ComplexSampler()
         self.implicit = implicit
@@ -56,14 +55,12 @@ class Trainer(Entity):
                 x = self.sampler()
                 if self.loss_fn.req_grad:
                     y, y_grad = self.implicit(x, grad=True)
-                    y_grad = torch.tensor(y_grad, device=self.device, dtype=torch.float32)
                 else:
                     y = self.implicit(x)
-                y = torch.tensor(y, device=self.device, dtype=torch.float32)
-            x = torch.tensor(x, device=self.device, dtype=torch.float32, requires_grad=self.loss_fn.req_grad)
+            x.requires_grad = self.loss_fn.req_grad
 
             pred = self.model(x)
-            self.sampler.prev_y = pred.detach().cpu().numpy()
+            self.sampler.prev_y = pred.detach()
 
             if self.loss_fn.req_grad:
                 gradients = gradient(pred, x)

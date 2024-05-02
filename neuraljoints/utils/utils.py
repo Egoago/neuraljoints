@@ -1,4 +1,5 @@
 import sys
+import time
 from abc import ABCMeta, ABC
 from inspect import isabstract
 from io import StringIO
@@ -41,3 +42,18 @@ def redirect_stdout() -> StringIO:
     dual_output = DualOutput()
     sys.stdout = dual_output
     return dual_output.stringio
+
+
+class FPSCounter:
+    BUFFER_SIZE = 3
+
+    def __init__(self):
+        self.prev_time = time.time_ns()
+        self.prev_fps = []
+
+    def update(self) -> (float, float):
+        new_time = time.time_ns()
+        fps = 1e9 / (new_time - self.prev_time)
+        self.prev_fps.append(fps)
+        self.prev_fps = self.prev_fps[FPSCounter.BUFFER_SIZE:]
+        return fps, sum(self.prev_fps) / len(self.prev_fps)

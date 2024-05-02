@@ -99,6 +99,5 @@ class ParameterWrapper:
         if imgui.BeginPopup(param.id):
             changed |= cls.draw(param.translation)
             changed |= cls.draw(param.rotation)
-            changed |= cls.draw(param.scale_param)
             imgui.EndPopup()
         return changed

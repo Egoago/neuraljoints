@@ -1,15 +1,15 @@
 import numpy as np
+import torch
 import polyscope as ps
 from polyscope_bindings import imgui
 
 from neuraljoints.geometry.explicit import PointCloud
 from neuraljoints.ui.io import IOListener
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper
-from neuraljoints.utils.math import normalize
 from neuraljoints.utils.parameters import FloatParameter
 
 
-class ControlPointsWrapper(IOListener, EntityWrapper):
+class ControlPointsWrapper(IOListener, EntityWrapper):  # TODO fix torch <- numpy
     TYPE = PointCloud
     INSTANCES: list['ControlPointsWrapper'] = []
 

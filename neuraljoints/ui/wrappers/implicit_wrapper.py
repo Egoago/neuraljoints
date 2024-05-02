@@ -1,6 +1,7 @@
-from typing import Callable
+from typing import Union
 
 import numpy as np
+import torch
 import polyscope as ps
 from polyscope import imgui
 
@@ -17,7 +18,7 @@ class ImplicitPlane(EntityWrapper):
     def __init__(self):
         super().__init__(object=Entity(name='Grid'))
         self.resolution = IntParameter('resolution', 100, 2, 200)
-        self.bounds = Float3Parameter('bounds', (2, 2, 2), 1, 10)
+        self.bounds = Float3Parameter('bounds', [2, 2, 2], 1, 10)
         self.z = FloatParameter('z', 0, -1, 1)
         self.gradient = BoolParameter('gradient', False)
         self._mesh = None
@@ -25,45 +26,51 @@ class ImplicitPlane(EntityWrapper):
         self._grid = None
         self.selected = None
 
-    def add_scalar_texture(self, name: str, func: Callable = None, values: np.ndarray = None):
+    @torch.no_grad()
+    def add_scalar_texture(self, name: str, implicit: Implicit = None, values: Union[np.ndarray, torch.Tensor] = None):
         if self.selected != name:
             return
         scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
                        'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.9}
         if values is None:
-            if func is None:
-                raise AttributeError('A callable function or the direct values have to provided.')
-            values = func(self.points)
-        texture = values.reshape(self.resolution.value, self.resolution.value)
-        self.mesh.add_scalar_quantity(name, texture, defined_on='texture', param_name="uv",
+            if implicit is None:
+                raise AttributeError('An implicie function or the direct values have to provided.')
+            values = implicit(self.get_points(implicit.device)).detach().cpu().numpy()
+        values = values.reshape(self.resolution.value, self.resolution.value)
+        if isinstance(values, torch.Tensor):
+            values = values.cpu().numpy()
+        self.mesh.add_scalar_quantity(name, values, defined_on='texture', param_name="uv",
                                       enabled=self.selected == name, **scalar_args)
 
-    def add_vector_field(self, name: str, func: Callable = None, values: np.ndarray = None):
+    @torch.no_grad()
+    def add_vector_field(self, name: str, implicit: Implicit = None, values: Union[np.ndarray, torch.Tensor] = None):
         if self.selected != name:
             return
         if values is None:
-            if func is None:
-                raise AttributeError('A callable function or the direct values have to provided.')
-            points = self.points[::4, ::4].reshape(-1, 3)
-            values = func(points)
+            if implicit is None:
+                raise AttributeError('An implicit function or the direct values have to provided.')
+            points = self.get_points(implicit.device)[::4, ::4].reshape(-1, 3)
+            values = implicit(points).detach().cpu().numpy()
+        if isinstance(values, torch.Tensor):
+            values = values.detach().cpu().numpy()
         self.grid.add_vector_quantity(name, values, radius=0.01, length=0.1, color=(0.1, 0.1, 0.1),
                                       enabled=self.selected == name)
 
-    @property
-    def points(self):
+    @torch.no_grad()
+    def get_points(self, device='cpu'):
         if self._points is None:
             bounds = self.bounds.value
             res = self.resolution.value
-            x, y = np.meshgrid(np.linspace(-bounds[0], bounds[0], res),
-                               np.linspace(bounds[1], -bounds[1], res))
-            z = np.ones_like(x) * self.z.value * bounds[2]
-            self._points = np.stack([x, y, z], axis=-1)
+            x, y = torch.meshgrid(torch.linspace(-bounds[0], bounds[0], res, device=device),
+                                  torch.linspace(bounds[1], -bounds[1], res, device=device))
+            z = torch.ones_like(x) * self.z.value * bounds[2]
+            self._points = torch.stack([x, y, z], dim=-1)
         return self._points
 
     @property
     def grid(self) -> ps.PointCloud:
         if self._grid is None:
-            points = self.points[::4, ::4].reshape(-1, 3)
+            points = self.get_points()[::4, ::4].reshape(-1, 3).detach().cpu().numpy()
 
             self._grid = ps.register_point_cloud("Implicit grid", points, point_render_mode='quad')
             self._grid.set_radius(0)
@@ -76,7 +83,7 @@ class ImplicitPlane(EntityWrapper):
             vertices = np.array([[-1, 1, z],
                                  [1, 1, z],
                                  [1, -1, z],
-                                 [-1, -1, z]]) * self.bounds.value
+                                 [-1, -1, z]]) * self.bounds.value.numpy()
 
             faces = np.arange(4).reshape((1, 4))
             uv = np.array([[0, 1],
@@ -125,11 +132,13 @@ class ImplicitWrapper(EntityWrapper):
 
     def draw_geometry(self):
         super().draw_geometry()
+        values = self.implicit(IMPLICIT_PLANE.get_points(self.implicit.device), grad=IMPLICIT_PLANE.gradient.value)
         if IMPLICIT_PLANE.gradient.value:
-            IMPLICIT_PLANE.add_vector_field(self.implicit.name, lambda p: self.implicit(p, grad=True)[-1])
+            values, grad = values
+            IMPLICIT_PLANE.add_vector_field(self.implicit.name, values=grad)
         else:
             IMPLICIT_PLANE.grid.remove_quantity(self.implicit.name)
-        IMPLICIT_PLANE.add_scalar_texture(self.implicit.name, self.implicit)
+        IMPLICIT_PLANE.add_scalar_texture(self.implicit.name, values=values)
 
     def __del__(self):
         IMPLICIT_PLANE.mesh.remove_quantity(self.implicit.name)

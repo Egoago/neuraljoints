@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-import numpy as np
+import torch
 
 from neuraljoints.geometry.base import Set
 from neuraljoints.geometry.implicit import Implicit
@@ -10,38 +10,38 @@ from neuraljoints.utils.parameters import FloatParameter
 class Aggregate(Implicit, Set):
     def forward(self, position):
         if len(self.children) == 0:
-            return np.zeros_like(position[..., 0])
+            return torch.zeros_like(position[..., 0])
         return self.reduce(self.foreach(lambda child: child(position)))
 
     def gradient(self, position):
         if len(self.children) == 0:
-            return np.zeros_like(position)
+            return torch.zeros_like(position)
         else:
             values, gradients = list(zip(*self.foreach(lambda child: child(position, grad=True))))
             return self.reduce_gradient(values, gradients)
 
     @abstractmethod
-    def reduce(self, values: [np.ndarray]):
+    def reduce(self, values: [torch.Tensor]):
         pass
 
     @abstractmethod
-    def reduce_gradient(self, values: [np.ndarray], gradients: [np.ndarray]):
+    def reduce_gradient(self, values: [torch.Tensor], gradients: [torch.Tensor]):
         pass
 
 
 class Union(Aggregate):
-    def reduce(self, values: [np.ndarray]):
-        return np.minimum.reduce(values)
+    def reduce(self, values: [torch.Tensor]):
+        return torch.stack(values, dim=0).amin(dim=0)
 
     def reduce_gradient(self, values, gradients):
-        values = np.stack(values, axis=-1)
-        gradients = np.stack(gradients, axis=-2)
-        indices = np.argmin(values, axis=-1)
-        return np.take_along_axis(gradients, indices[..., None, None], -2).squeeze()
+        values = torch.stack(values, dim=-1)
+        gradients = torch.stack(gradients, dim=-2)
+        indices = torch.argmin(values, dim=-1)
+        return torch.take_along_dim(gradients, indices[..., None, None], dim=-2).squeeze()
 
 
 class InverseUnion(Union):
-    def reduce(self, values: [np.ndarray]):
+    def reduce(self, values: [torch.Tensor]):
         return -super().reduce(values)
 
     def reduce_gradient(self, values, gradients):
@@ -49,23 +49,22 @@ class InverseUnion(Union):
 
 
 class Sum(Aggregate):
-    def reduce(self, values: [np.ndarray]):
-        return np.sum(values, axis=0)
+    def reduce(self, values: [torch.Tensor]):
+        return torch.stack(values, dim=0).sum(dim=0)
 
     def reduce_gradient(self, values, gradients):
-        gradients = np.stack(gradients, axis=-1)
-        return gradients.sum(axis=-1)
+        return torch.stack(gradients, dim=0).sum(dim=0)
 
 
 class CleanUnion(Aggregate):
-    def reduce(self, values: [np.ndarray]):
-        values = np.stack(values, axis=-1)
-        return values.sum(axis=-1) - np.sqrt((values**2).sum(axis=-1))
+    def reduce(self, values: [torch.Tensor]):
+        values = torch.stack(values, dim=-1)
+        return values.sum(dim=-1) - ((values**2).sum(dim=-1)).sqrt()
 
     def reduce_gradient(self, values, gradients):
-        values = np.stack(values, axis=-1)
-        gradients = np.stack(gradients, axis=-1)
-        return gradients.sum(axis=-1) - ((values[..., None, :] * gradients).sum(axis=-1)/np.sqrt((values**2).sum(axis=-1))[..., None])
+        values = torch.stack(values, dim=-1)
+        gradients = torch.stack(gradients, dim=-1)
+        return gradients.sum(dim=-1) - ((values[..., None, :] * gradients).sum(dim=-1)/((values**2).sum(dim=-1)).sqrt()[..., None])
 
 
 class RUnion(Aggregate):
@@ -76,13 +75,13 @@ class RUnion(Aggregate):
             name = f'a{i+1}'
             setattr(self, name, FloatParameter(name, 1, min=0., max=20.))
 
-    def reduce(self, values: [np.ndarray]):
-        values = np.stack(values, axis=-1)
-        clean_union = values.sum(axis=-1) - np.sqrt((values**2).sum(axis=-1))
-        a = np.array([getattr(self, f'a{i + 1}').value for i in range(len(self.children))])
-        return clean_union + self.a0.value / (1 + ((values/a)**2).sum(axis=-1))
+    def reduce(self, values: [torch.Tensor]):
+        values = torch.stack(values, dim=-1)
+        clean_union = values.sum(dim=-1) - ((values**2).sum(dim=-1)).sqrt()
+        a = torch.array([getattr(self, f'a{i + 1}').value for i in range(len(self.children))])
+        return clean_union + self.a0.value / (1 + ((values/a)**2).sum(dim=-1))
 
-    def reduce_gradient(self, values: [np.ndarray], gradients: [np.ndarray]):
+    def reduce_gradient(self, values: [torch.Tensor], gradients: [torch.Tensor]):
         raise NotImplementedError()
 
 
@@ -91,28 +90,28 @@ class RoundUnion(Union):
         self.radius = FloatParameter('radius', radius, min=0., max=2.)
         super().__init__(*args, **kwargs)
 
-    def reduce(self, values: [np.ndarray]):
+    def reduce(self, values: [torch.Tensor]):
         #https://www.ronja-tutorials.com/post/035-2d-sdf-combination/
-        intersectionSpace = np.stack(values, axis=-1) - self.radius.value
-        intersectionSpace = np.minimum(intersectionSpace, 0)
-        insideDist = -np.linalg.norm(intersectionSpace, axis=-1)
+        intersectionSpace = torch.stack(values, dim=-1) - self.radius.value
+        intersectionSpace = torch.clamp(intersectionSpace, max=0)
+        insideDist = -torch.linalg.norm(intersectionSpace, dim=-1)
         union = super().reduce(values)
-        outsideDist = np.maximum(union, self.radius.value)
+        outsideDist = torch.clamp(union, min=self.radius.value)
         return insideDist + outsideDist
 
-    def reduce_gradient(self, values: [np.ndarray], gradients: [np.ndarray]):
+    def reduce_gradient(self, values: [torch.Tensor], gradients: [torch.Tensor]):
         raise NotImplementedError()
 
 
 class Intersect(Aggregate):
-    def reduce(self, values: [np.ndarray]):
-        return np.maximum.reduce(values)
+    def reduce(self, values: [torch.Tensor]):
+        return torch.stack(values, dim=0).amax(dim=0)
 
     def reduce_gradient(self, values, gradients):
-        values = np.stack(values, axis=-1)
-        gradients = np.stack(gradients, axis=-2)
-        indices = np.argmax(values, axis=-1)
-        return np.take_along_axis(gradients, indices[..., None, None], -2).squeeze()
+        values = torch.stack(values, dim=-1)
+        gradients = torch.stack(gradients, dim=-2)
+        indices = torch.armax(values, dim=-1)
+        return torch.take_along_dim(gradients, indices[..., None, None], dim=-2).squeeze()
 
 
 class SuperElliptic(Aggregate):
@@ -123,10 +122,11 @@ class SuperElliptic(Aggregate):
             name = f'r{i+1}'
             setattr(self, name, FloatParameter(name, 1, min=0., max=20.))
 
-    def reduce(self, values: [np.ndarray]):
-        p = np.stack(values, axis=-1)
-        r = np.array([getattr(self, f'r{i + 1}').value for i in range(len(self.children))])
-        return 1 - (np.maximum((1 - p) / r, 0) ** self.t.value).sum(axis=-1)
+    def reduce(self, values: [torch.Tensor]):
+        p = torch.stack(values, dim=-1)
+        r = torch.tensor([getattr(self, f'r{i + 1}').value for i in range(len(self.children))],
+                         dtype=values[0].dtype, device=values[0].device)
+        return 1 - (torch.clamp((1 - p) / r, min=0) ** self.t.value).sum(dim=-1)
 
-    def reduce_gradient(self, values: [np.ndarray], gradients: [np.ndarray]):
+    def reduce_gradient(self, values: [torch.Tensor], gradients: [torch.Tensor]):
         raise NotImplementedError()

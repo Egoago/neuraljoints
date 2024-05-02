@@ -1,3 +1,5 @@
+import torch
+
 from neuraljoints.utils.parameters import Parameter
 from neuraljoints.utils.utils import RegisteredMeta
 
@@ -17,6 +19,7 @@ class Entity(metaclass=RegisteredMeta):
         if name not in Entity.__names:
             Entity.__names.append(name)
         self.name = name
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         super().__init__(**kwargs)
 
     @property

@@ -7,7 +7,7 @@ from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper
 from neuraljoints.utils.math import normalize
 
 
-class ParametricWrapper(EntityWrapper):
+class ParametricWrapper(EntityWrapper): # TODO numpy -> torch
     TYPE = Parametric
     RESOLUTION = 100
 

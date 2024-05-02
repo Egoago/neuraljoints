@@ -3,7 +3,6 @@ from abc import abstractmethod
 import torch
 
 from neuraljoints.geometry.base import Entity
-from neuraljoints.utils.parameters import IntParameter
 
 
 class Embedding(torch.nn.Module, Entity):

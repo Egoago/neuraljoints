@@ -1,4 +1,4 @@
-import numpy as np
+import torch
 
 from neuraljoints.geometry.base import Entity
 from neuraljoints.utils.parameters import IntParameter, Float3Parameter, FloatParameter
@@ -19,9 +19,9 @@ class Sampler(Entity):
     def sample(self, count=None):
         if count is None:
             count = self.batch_size.value
-        x = np.random.rand(count, 3).astype(dtype=np.float32)
-        x = (x * 2 - 1) * self.bounds.value[None, ...]
-        return x.astype(dtype=np.float32)
+        x = torch.rand((count, 3), dtype=torch.float32, device=self.device)
+        x = (x * 2 - 1) * self.bounds.value[None, ...].to(device=self.device)
+        return x
 
 
 class ComplexSampler(Sampler):
@@ -34,11 +34,13 @@ class ComplexSampler(Sampler):
         if self.prev_y is None or self.batch_size.value != len(self.prev_x):
             return Sampler.__call__(self)
 
-        indices = np.argsort(np.abs(self.prev_y))
+        indices = torch.argsort(torch.abs(self.prev_y))
         count = len(indices)
         surface_count = int(self.surface_ratio.value * count)
         volume_count = count - surface_count
         self.prev_x[indices[surface_count:]] = self.sample(volume_count)
-        self.prev_x[indices[:surface_count]] = self.prev_x[indices[:surface_count]] + np.random.randn(surface_count, 3) * self.noise_var.value
-        self.prev_x = np.clip(self.prev_x, -self.bounds.value, self.bounds.value)
+        noise = torch.randn((surface_count, 3), dtype=torch.float32, device=self.device)
+        self.prev_x[indices[:surface_count]] = self.prev_x[indices[:surface_count]] + self.noise_var.value * noise
+        bounds = self.bounds.value.to(device=self.device)
+        self.prev_x = torch.clamp(self.prev_x, -bounds, bounds)
         return self.prev_x
