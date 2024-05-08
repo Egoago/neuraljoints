@@ -1,11 +1,10 @@
 import warnings
 from abc import ABC
-from typing import Union, Tuple
 
 import torch
 
 from neuraljoints.geometry.base import Entity, Proxy
-from neuraljoints.utils.parameters import Transform, FloatParameter, Float3Parameter
+from neuraljoints.utils.parameters import Transform, FloatParameter
 
 
 class Implicit(Entity, ABC):
@@ -13,24 +12,14 @@ class Implicit(Entity, ABC):
         super().__init__(**kwargs)
         self.transform = transform if transform is not None else Transform()
 
-    def __call__(self, position: torch.Tensor, grad=False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def __call__(self, position: torch.Tensor) -> torch.Tensor:
         if self.transform is not None:
             position = self.transform(position)
-        values = self.forward(position)
-        if grad:
-            grads = self.gradient(position)
-            if self.transform is not None:
-               grads = self.transform.rotate(grads, inv=False)
-            return values, grads
-        return values
+        return self.forward(position)
 
     def forward(self, position):
         warnings.warn(f'Forward not implemented for {self.__class__}')
         return torch.zeros_like(position[..., 0])
-
-    def gradient(self, position):
-        warnings.warn(f'Gradient not implemented for {self.__class__}')
-        return torch.zeros_like(position)
 
 
 class SDF(Implicit, ABC):
@@ -45,9 +34,6 @@ class Sphere(SDF):
     def forward(self, position):
         return torch.linalg.norm(position, dim=-1) - self.radius.value
 
-    def gradient(self, position):
-        return torch.nn.functional.normalize(position, dim=-1)
-
 
 class Cube(SDF):
     def __init__(self, **kwargs):
@@ -59,12 +45,6 @@ class Cube(SDF):
         return (torch.linalg.norm(torch.clamp(d, min=0), dim=-1) +
                 torch.clamp(torch.amax(d, dim=-1), max=0))
 
-    def gradient(self, position):
-        d = abs(position) - self.size.value/2.
-        outer = torch.nn.functional.normalize(torch.clamp(d, min=0), dim=-1)
-        inner = torch.eye(position.shape[-1], device=position.device, dtype=position.dtype)[torch.argmax(d, dim=-1)]
-        return torch.where((torch.amax(d, dim=-1) > 0)[..., None], outer, inner) * torch.sign(position)
-
 
 class Cylinder(SDF):
     def __init__(self, **kwargs):
@@ -75,10 +55,6 @@ class Cylinder(SDF):
         position[..., 1] = 0
         return torch.linalg.norm(position, dim=-1) - self.radius.value
 
-    def gradient(self, position):
-        position[..., 1] = 0
-        return torch.nn.functional.normalize(position, dim=-1)
-
 
 class Plane(SDF):
     def __init__(self, *args, **kwargs):
@@ -86,11 +62,6 @@ class Plane(SDF):
 
     def forward(self, position):
         return position[..., 1]
-
-    def gradient(self, position):
-        grad = torch.zeros_like(position)
-        grad[..., 1] = 1
-        return grad
 
 
 class ImplicitProxy(Implicit, Proxy):
@@ -105,11 +76,6 @@ class Inverse(ImplicitProxy):
             return -self.child(position)
         return torch.zeros_like(position[..., 0])
 
-    def gradient(self, position):
-        if self.child is not None:
-            return -self.child(position, grad=True)[1]
-        return torch.zeros_like(position)
-
 
 class SdfToUdf(ImplicitProxy):
     @property
@@ -120,10 +86,3 @@ class SdfToUdf(ImplicitProxy):
         if self.child is not None:
             return torch.abs(self.child(position))
         return torch.zeros_like(position[..., 0])
-
-    def gradient(self, position):
-        if self.child is not None:
-            sdf = self.sdf(position)
-            return self.sdf(position, grad=True)[1] * torch.sign(sdf)[..., None]
-        return torch.zeros_like(position)
-

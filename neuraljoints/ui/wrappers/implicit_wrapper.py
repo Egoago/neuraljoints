@@ -8,7 +8,7 @@ from polyscope import imgui
 
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
-from neuraljoints.geometry.implicit import Implicit, ImplicitProxy, SDF
+from neuraljoints.geometry.implicit import Implicit, ImplicitProxy
 from neuraljoints.neural.autograd import gradient
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, ProxyWrapper
 from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolParameter, Float3Parameter, ChoiceParameter
@@ -135,9 +135,11 @@ class ImplicitPlane(EntityWrapper):
 
         if self.selected is not None:
             implicit = self.selected.implicit
-            values = implicit(self.get_points(implicit.device), grad=IMPLICIT_PLANE.gradient.value)
+            x = self.get_points(implicit.device)
+            x.requires_grad = self.gradient.value
+            values = implicit(x)
             if self.gradient.value:
-                values, grad = values
+                grad = gradient(values, x)
                 self.add_vector_field(implicit.name, values=grad)
             else:
                 self.grid.remove_quantity(implicit.name)

@@ -52,12 +52,18 @@ class Trainer(Entity):
 
             self.optimizer.zero_grad()
             y_grad, gradients, hessians = None, None, None
-            with torch.no_grad():
-                x, surface_indices = self.sampler()
-                if self.loss_fn.req_grad:
-                    y, y_grad = self.implicit(x, grad=True)
-                else:
-                    y = self.implicit(x)
+
+            x, surface_indices = self.sampler()
+            x.requires_grad = self.loss_fn.req_grad
+
+            y = self.implicit(x)
+
+            if self.loss_fn.req_grad:
+                y_grad = gradient(y, x)
+                if x.grad is not None:
+                    x.grad.detach_()
+                    x.grad.zero_()
+
             x.requires_grad = self.loss_fn.req_grad or self.sampler.req_grad
 
             pred = self.model(x)
