@@ -5,7 +5,7 @@ from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.neural.autograd import hessian, gradient
 from neuraljoints.neural.losses import CompositeLoss, Mse
 from neuraljoints.neural.model import Network
-from neuraljoints.neural.sampling import ComplexSampler
+from neuraljoints.neural.sampling import PullSampler
 from neuraljoints.neural.scheduler import LRScheduler
 from neuraljoints.utils.parameters import IntParameter, FloatParameter
 
@@ -18,7 +18,7 @@ class Trainer(Entity):
         self.lr = FloatParameter('lr', 1e-4, 1e-7, 0.1)
 
         self.model = model.to(self.device)
-        self.sampler = ComplexSampler()
+        self.sampler = PullSampler()
         self.implicit = implicit
         self.loss_fn = CompositeLoss(name='losses')
         self.loss_fn.add(Mse())
@@ -44,6 +44,7 @@ class Trainer(Entity):
         self.training = False
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr.value)  # TODO remove redundancy
         self.scheduler = LRScheduler(self.optimizer, self.lr)
+        self.sampler.reset()
 
     def update(self):
         if self.training:
@@ -52,27 +53,29 @@ class Trainer(Entity):
             self.optimizer.zero_grad()
             y_grad, gradients, hessians = None, None, None
             with torch.no_grad():
-                x = self.sampler()
+                x, surface_indices = self.sampler()
                 if self.loss_fn.req_grad:
                     y, y_grad = self.implicit(x, grad=True)
                 else:
                     y = self.implicit(x)
-            x.requires_grad = self.loss_fn.req_grad
+            x.requires_grad = self.loss_fn.req_grad or self.sampler.req_grad
 
             pred = self.model(x)
-            self.sampler.prev_y = pred.detach()
 
-            if self.loss_fn.req_grad:
+            if self.loss_fn.req_grad or self.sampler.req_grad:
                 gradients = gradient(pred, x)
 
             if self.loss_fn.req_hess:
                 hessians = hessian(gradients, x)
 
-            loss = self.loss_fn(x, y, pred, y_grad=y_grad, grad=gradients, hess=hessians)
+            loss = self.loss_fn(x, y, pred,
+                                y_grad=y_grad, grad=gradients, hess=hessians,
+                                surface_indices=surface_indices)
 
             loss.backward()
             self.optimizer.step()
             self.scheduler.update()
+            self.sampler.update(prev_y=pred, prev_x=x, prev_grad=gradients)
 
             self.losses.append(loss.item())
             if self.step > self.max_steps.value:
