@@ -1,12 +1,11 @@
 import unittest
-from itertools import product
 
 import torch
 
 from neuraljoints.neural.autograd import gradient, hessian
 
 
-class AutogradTest(unittest.TestCase):
+class TestAutograd(unittest.TestCase):
     EPSILON = 1e-7
     N = 1000
     D = 3
