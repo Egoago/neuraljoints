@@ -2,11 +2,13 @@ from abc import abstractmethod, ABC
 
 import torch
 
-from neuraljoints.geometry.base import Entity, Set
+from neuraljoints.geometry.base import Set
+from neuraljoints.neural.autograd import gaussian_curvature
+from neuraljoints.neural.sampling import Pipeline
 from neuraljoints.utils.parameters import FloatParameter
 
 
-class Loss(Entity):
+class Loss(Pipeline):
     _on_surface = False
     _on_volume = False
 
@@ -15,20 +17,11 @@ class Loss(Entity):
         return True
 
     @property
-    def req_grad(self):
-        return bool({'grad_gt', 'grad_pred', 'hess_pred'} & self.attributes)
-
-    @property
     def attributes(cls) -> set[str]:
-        return {'x'}
+        return super().attributes | {'x'}
 
     def __call__(self, **kwargs):
         return self.energy(**kwargs).mean()
-
-    def check_input(self, **kwargs):
-        for attr in self.attributes:
-            if attr not in kwargs:
-                raise AttributeError(f'Input {attr} not found for {self.name}')
 
     def energy(self, **kwargs):
         self.check_input(**kwargs)
@@ -163,17 +156,9 @@ class GaussianCurvature(WeightedLoss):
     def attributes(self) -> set[str]:
         return super().attributes | {'hess_pred', 'grad_pred'}
 
-    def curvature(self, hess, grad):
-        mat = torch.cat([hess, grad[..., None]], -1)
-        row = torch.cat([grad, torch.zeros_like(grad[..., 0])[..., None]], -1)
-        mat = torch.cat([mat, row[..., None, :]], -2)
-        determinants = torch.linalg.det(mat)
-        norm_4 = (grad ** 2).sum(dim=-1) ** 2
-        return - determinants / norm_4
-
     def _energy(self, hess_pred, grad_pred, **kwargs):
-        curvature = self.curvature(hess_pred, grad_pred)
-        return curvature.abs()
+        curvature = gaussian_curvature(hess_pred, grad_pred)
+        return curvature
 
 
 class DoubleThrough(GaussianCurvature):

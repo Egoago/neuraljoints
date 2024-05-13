@@ -8,7 +8,7 @@ from neuraljoints.geometry.base import Entity
 from neuraljoints.ui.drawable import Drawable
 from neuraljoints.ui.io import IOHandler
 from neuraljoints.ui.wrappers.base_wrapper import get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import IMPLICIT_PLANE
+from neuraljoints.ui.wrappers.grid import IMPLICIT_PLANE
 from neuraljoints.utils.utils import redirect_stdout
 
 
@@ -72,7 +72,7 @@ class UIHandler:
 
     @classmethod
     def add_entity(cls, entity: Entity):
-        cls.drawables.insert(0, get_wrapper(entity))
+        cls.drawables.append(get_wrapper(entity))
 
     @classmethod
     def update(cls):
@@ -98,7 +98,7 @@ class UIHandler:
             imgui.TreePop()
 
         for drawable in cls.drawables:
-            drawable.draw(refresh=cls.drawables[-1].changed)
+            drawable.draw(refresh=cls.drawables[0].changed)
         imgui.End()
 
         if ps.window_requests_close():

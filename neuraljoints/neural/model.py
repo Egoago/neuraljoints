@@ -5,12 +5,12 @@ import torch
 
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit
-from neuraljoints.neural.embedding import NoEmbedding, ImplicitEmbedding
-from neuraljoints.utils.parameters import IntParameter, ChoiceParameter, Parameter, FloatParameter, BoolParameter
+from neuraljoints.neural.embedding import NoEmbedding
+from neuraljoints.utils.parameters import IntParameter, ChoiceParameter, Parameter, FloatParameter
 from neuraljoints.utils.utils import RegisteredMeta
 
 
-class Network(Entity, torch.nn.Module):
+class Network(Implicit, torch.nn.Module):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.embedding = NoEmbedding()  # TODO
@@ -122,6 +122,12 @@ class ReLU(LinearLayer):
     def __init__(self, in_dim, out_dim, **kwargs):
         kwargs['activation'] = torch.nn.ReLU()
         super().__init__(in_dim, out_dim, **kwargs)
+
+
+class Squared(LinearLayer):
+    def forward(self, x):
+        x = super().forward(x)
+        return torch.clamp_min(x, 0)**2
 
 
 class SoftPlus(LinearLayer):

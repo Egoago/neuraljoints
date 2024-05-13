@@ -92,7 +92,8 @@ class ImplicitEmbedding(Embedding):
             if self.grad:
                 gradients.append(gradient(value, x))
 
-        x = torch.concatenate(values, dim=0)
-        if self.gradient:
-            x = torch.concatenate([x[..., None], gradients], dim=-1)
+        x = torch.stack(values, dim=-1)
+        if self.grad:
+            gradients = torch.concatenate(gradients, dim=-1)
+            x = torch.concatenate([x, gradients], dim=-1)
         return x

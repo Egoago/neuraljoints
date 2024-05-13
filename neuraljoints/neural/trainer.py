@@ -47,27 +47,20 @@ class Trainer(Entity):
         self.sampler.reset()
 
     def step(self):
-        self.optimizer.zero_grad()
-        outputs = {}
-
-        x, surface_indices = self.sampler()
-        outputs['x'] = x
-        outputs['surface_indices'] = surface_indices
+        outputs = self.sampler()
+        x = outputs['x']
         x.requires_grad = self.loss_fn.req_grad
 
         outputs['y_gt'] = self.implicit(x)
 
         if 'grad_gt' in self.loss_fn.attributes:
             outputs['grad_gt'] = gradient(outputs['y_gt'], x)
-            if x.grad is not None:
-                x.grad.detach_()
-                x.grad.zero_()
 
         x.requires_grad = self.loss_fn.req_grad or self.sampler.req_grad
 
         outputs['y_pred'] = self.model(x)
 
-        if 'grad_pred' in self.loss_fn.attributes or self.sampler.req_grad:
+        if 'grad_pred' in self.loss_fn.attributes or 'grad_pred' in self.sampler.attributes:
             outputs['grad_pred'] = gradient(outputs['y_pred'], x)
 
         if 'hess_pred' in self.loss_fn.attributes:
@@ -79,6 +72,7 @@ class Trainer(Entity):
     def update(self):
         if self.training:
             self.training_step += 1
+            self.optimizer.zero_grad()
 
             outputs = self.step()
 

@@ -11,3 +11,12 @@ def hessian(gradients, inputs):
     for i in range(gradients.shape[-1]):
         grad_grads.append(gradient(gradients[..., i], inputs))
     return torch.stack(grad_grads, dim=-2)
+
+
+def gaussian_curvature(hess, grad):
+    mat = torch.cat([hess, grad[..., None]], -1)
+    row = torch.cat([grad, torch.zeros_like(grad[..., 0])[..., None]], -1)
+    mat = torch.cat([mat, row[..., None, :]], -2)
+    determinants = torch.linalg.det(mat)
+    norm_4 = (grad ** 2).sum(dim=-1) ** 2
+    return - determinants / norm_4

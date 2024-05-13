@@ -14,9 +14,22 @@ def detach_parameters(func):
     return wrapper
 
 
-class Sampler(Entity):
-    req_grad = False
+class Pipeline(Entity):
+    @property
+    def attributes(self) -> set[str]:
+        return set()
 
+    def check_input(self, **kwargs):
+        for attr in self.attributes:
+            if attr not in kwargs:
+                raise AttributeError(f'Input {attr} not found for {self.name}')
+
+    @property
+    def req_grad(self):
+        return bool({'grad_gt', 'grad_pred', 'hess_pred'} & self.attributes)
+
+
+class Sampler(Pipeline):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.batch_size = IntParameter('batch_size', 8192 * 2, 256, 8192 * 2)
@@ -29,7 +42,8 @@ class Sampler(Entity):
         bounds = self.bounds.value.to(device=self.device)
         x = torch.clamp(x, -bounds, bounds)
 
-        return x, self.surface_indices
+        return {'x': x,
+                'surface_indices': self.surface_indices}
 
     @abstractmethod
     def _sample(self):
@@ -41,7 +55,7 @@ class Sampler(Entity):
     @abstractmethod
     @detach_parameters
     def update(self, **kwargs):
-        pass
+        self.check_input(**kwargs)
 
     def uniform_sample(self, count=None):
         if count is None:
@@ -78,11 +92,15 @@ class HierarchicalSampler(Sampler):
 
         return x
 
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'y_pred', 'x'}
+
     @detach_parameters
-    def update(self, y_pred=None, x=None, **kwargs):
+    def update(self, **kwargs):
         super().update(**kwargs)
-        self.prev_y = y_pred
-        self.prev_x = x
+        self.prev_y = kwargs['y_pred']
+        self.prev_x = kwargs['x']
 
     def reset(self):
         super().reset()
@@ -91,8 +109,6 @@ class HierarchicalSampler(Sampler):
 
 
 class PullSampler(HierarchicalSampler):
-    req_grad = True
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.prev_grad = None
@@ -106,10 +122,14 @@ class PullSampler(HierarchicalSampler):
             x[si] = x[si] - self.prev_y[si][..., None] * self.prev_grad[si]
         return x
 
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'grad_pred'}
+
     @detach_parameters
-    def update(self, grad_pred=None, **kwargs):
+    def update(self, **kwargs):
         super().update(**kwargs)
-        self.prev_grad = grad_pred
+        self.prev_grad = kwargs['grad_pred']
 
     def reset(self):
         super().reset()

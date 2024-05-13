@@ -9,52 +9,41 @@ from neuraljoints.neural.model import Network, Layer
 from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper, IMPLICIT_PLANE
+from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
+from neuraljoints.ui.wrappers.grid import IMPLICIT_PLANE
 from neuraljoints.utils.parameters import BoolParameter
 
 
 class NetworkWrapper(ImplicitWrapper):
     TYPE = Network
 
-    class ImplicitNetwork(Implicit):    # TODO refactor
-        def __init__(self, model: Network, **kwargs):
-            super().__init__(**kwargs)
-            self.model = model
-
-        @property
-        def hparams(self):
-            return self.model.hparams
-
-        def forward(self, position):
-            return self.model(position)
-
     def __init__(self, network: Network):
-        super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
+        super().__init__(object=network)
 
     @property
-    def network(self) -> ImplicitNetwork:
+    def network(self) -> Network:
         return self.object
 
     def draw_ui(self) -> bool:
         super().draw_ui()
         # Handle model type change
-        init_schemes = Layer.get_subclass(self.network.model.layer.value).init_schemes
-        if set(init_schemes) != set(self.network.model.init_scheme.choices):
-            self.network.model.init_scheme.choices = init_schemes
-            self.network.model.init_scheme.initial = init_schemes[0]
-            self.network.model.init_scheme.value = init_schemes[0]
-        if self.network.model.layer.value == 'Siren':
-            init_scheme = self.network.model.init_scheme.value
+        init_schemes = Layer.get_subclass(self.network.layer.value).init_schemes
+        if set(init_schemes) != set(self.network.init_scheme.choices):
+            self.network.init_scheme.choices = init_schemes
+            self.network.init_scheme.initial = init_schemes[0]
+            self.network.init_scheme.value = init_schemes[0]
+        if self.network.layer.value == 'Siren':
+            init_scheme = self.network.init_scheme.value
             if init_scheme == 'mfgi':
-                self.network.model.n_layers.min = 3
-                self.network.model.n_layers.value = max(self.network.model.n_layers.value, 3)
-                self.network.model.n_layers.initial = max(self.network.model.n_layers.initial, 3)
+                self.network.n_layers.min = 3
+                self.network.n_layers.value = max(self.network.n_layers.value, 3)
+                self.network.n_layers.initial = max(self.network.n_layers.initial, 3)
             elif init_scheme == 'geometric':
-                self.network.model.n_layers.min = 2
-                self.network.model.n_layers.value = max(self.network.model.n_layers.value, 2)
-                self.network.model.n_layers.initial = max(self.network.model.n_layers.initial, 2)
+                self.network.n_layers.min = 2
+                self.network.n_layers.value = max(self.network.n_layers.value, 2)
+                self.network.n_layers.initial = max(self.network.n_layers.initial, 2)
             else:
-                self.network.model.n_layers.min = 0
+                self.network.n_layers.min = 0
         return self.changed
 
 
@@ -119,15 +108,23 @@ class LossWrapper(ImplicitWrapper):
     def __init__(self, loss: Loss, trainer: Trainer):
         super().__init__(object=LossWrapper.ImplicitLoss(loss, trainer.model, trainer.implicit))
         self.scalar_args = {'cmap': 'viridis'}
-        self.implicit_network = NetworkWrapper.ImplicitNetwork(trainer.model)
+        self.model = trainer.model
 
     @property
     def surface_implicit(self) -> Implicit:
-        return self.implicit_network
+        return self.model
 
 
 class CompositeLossWrapper(SetWrapper):
     TYPE = CompositeLoss
+
+    def remove_wrapper(self, wrapper: EntityWrapper) -> bool:
+        if wrapper is not None and wrapper in self.child_wrappers:
+            self.child_wrappers.remove(wrapper)
+            self.object.remove(wrapper.object.loss)
+            self.changed = True
+            return True
+        return False
 
     @property
     def choices(self) -> set[Loss] | None:
