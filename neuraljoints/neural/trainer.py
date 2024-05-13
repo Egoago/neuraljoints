@@ -25,13 +25,13 @@ class Trainer(Entity):
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr.value)
         self.scheduler = LRScheduler(self.optimizer, self.lr)
         self.training = False
-        self.step = 0
+        self.training_step = 0
         self.losses = []
 
     def train(self, step=0):
         self.training = True
         self.model = self.model.to(self.device)
-        self.step = step
+        self.training_step = step
         if step == 0:
             self.losses = []
 
@@ -46,43 +46,47 @@ class Trainer(Entity):
         self.scheduler = LRScheduler(self.optimizer, self.lr)
         self.sampler.reset()
 
+    def step(self):
+        self.optimizer.zero_grad()
+        outputs = {}
+
+        x, surface_indices = self.sampler()
+        outputs['x'] = x
+        outputs['surface_indices'] = surface_indices
+        x.requires_grad = self.loss_fn.req_grad
+
+        outputs['y_gt'] = self.implicit(x)
+
+        if 'grad_gt' in self.loss_fn.attributes:
+            outputs['grad_gt'] = gradient(outputs['y_gt'], x)
+            if x.grad is not None:
+                x.grad.detach_()
+                x.grad.zero_()
+
+        x.requires_grad = self.loss_fn.req_grad or self.sampler.req_grad
+
+        outputs['y_pred'] = self.model(x)
+
+        if 'grad_pred' in self.loss_fn.attributes or self.sampler.req_grad:
+            outputs['grad_pred'] = gradient(outputs['y_pred'], x)
+
+        if 'hess_pred' in self.loss_fn.attributes:
+            outputs['hess_pred'] = hessian(outputs['grad_pred'], x)
+
+        outputs['loss'] = self.loss_fn(**outputs)
+        return outputs
+
     def update(self):
         if self.training:
-            self.step += 1
+            self.training_step += 1
 
-            self.optimizer.zero_grad()
-            y_grad, gradients, hessians = None, None, None
+            outputs = self.step()
 
-            x, surface_indices = self.sampler()
-            x.requires_grad = self.loss_fn.req_grad
-
-            y = self.implicit(x)
-
-            if self.loss_fn.req_grad:
-                y_grad = gradient(y, x)
-                if x.grad is not None:
-                    x.grad.detach_()
-                    x.grad.zero_()
-
-            x.requires_grad = self.loss_fn.req_grad or self.sampler.req_grad
-
-            pred = self.model(x)
-
-            if self.loss_fn.req_grad or self.sampler.req_grad:
-                gradients = gradient(pred, x)
-
-            if self.loss_fn.req_hess:
-                hessians = hessian(gradients, x)
-
-            loss = self.loss_fn(x, y, pred,
-                                y_grad=y_grad, grad=gradients, hess=hessians,
-                                surface_indices=surface_indices)
-
-            loss.backward()
+            outputs['loss'].backward()
             self.optimizer.step()
             self.scheduler.update()
-            self.sampler.update(prev_y=pred, prev_x=x, prev_grad=gradients)
+            self.sampler.update(**outputs)
 
-            self.losses.append(loss.item())
-            if self.step > self.max_steps.value:
+            self.losses.append(outputs['loss'].item())
+            if self.training_step > self.max_steps.value:
                 self.stop()

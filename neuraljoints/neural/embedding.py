@@ -3,6 +3,8 @@ from abc import abstractmethod
 import torch
 
 from neuraljoints.geometry.base import Entity
+from neuraljoints.geometry.implicit import Implicit
+from neuraljoints.neural.autograd import gradient
 
 
 class Embedding(torch.nn.Module, Entity):
@@ -67,3 +69,30 @@ class FrequencyEmbedding(Embedding):
             return torch.cat([x, torch.sin(spectrum)], -1) #[..., 2cL+c]
         else:
             return torch.sin(spectrum)                     #[..., 2cL]
+
+
+class ImplicitEmbedding(Embedding):
+    def __init__(self, implicits: list[Implicit], grad=False):
+        super().__init__()
+        self.implicits = implicits
+        self.grad = grad
+
+    @property
+    def out_dims(self):
+        return len(self.implicits) * (4 if self.grad else 1)
+
+    def forward(self, x):
+        if self.grad and not x.requires_grad:
+            x.requires_grad = True
+
+        values, gradients = [], []
+        for implicit in self.implicits:
+            value = implicit(x)
+            values.append(value)
+            if self.grad:
+                gradients.append(gradient(value, x))
+
+        x = torch.concatenate(values, dim=0)
+        if self.gradient:
+            x = torch.concatenate([x[..., None], gradients], dim=-1)
+        return x

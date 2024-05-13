@@ -79,10 +79,10 @@ class HierarchicalSampler(Sampler):
         return x
 
     @detach_parameters
-    def update(self, prev_y=None, prev_x=None, **kwargs):
+    def update(self, y_pred=None, x=None, **kwargs):
         super().update(**kwargs)
-        self.prev_y = prev_y
-        self.prev_x = prev_x
+        self.prev_y = y_pred
+        self.prev_x = x
 
     def reset(self):
         super().reset()
@@ -107,9 +107,9 @@ class PullSampler(HierarchicalSampler):
         return x
 
     @detach_parameters
-    def update(self, prev_y=None, prev_x=None, prev_grad=None, **kwargs):
-        super().update(prev_y=prev_y, prev_x=prev_x, **kwargs)
-        self.prev_grad = prev_grad
+    def update(self, grad_pred=None, **kwargs):
+        super().update(**kwargs)
+        self.prev_grad = grad_pred
 
     def reset(self):
         super().reset()

@@ -7,48 +7,46 @@ from neuraljoints.utils.parameters import FloatParameter
 
 
 class Loss(Entity):
-    _req_grad = False
-    _req_hess = False
     _on_surface = False
     _on_volume = False
-
-    @property
-    def req_grad(self):
-        return (self._req_grad or self._req_hess) and self.enabled
-
-    @property
-    def req_hess(self):
-        return self._req_hess and self.enabled
 
     @property
     def enabled(self):
         return True
 
-    def __call__(self, *args, **kwargs):
-        return self.energy(*args, **kwargs).mean()
+    @property
+    def req_grad(self):
+        return bool({'grad_gt', 'grad_pred', 'hess_pred'} & self.attributes)
 
-    def energy(self, x, y, pred, y_grad=None, grad=None, hess=None, surface_indices=None):
-        if self.req_hess:
-            assert hess is not None
-        if self.req_grad:
-            assert grad is not None
-        if (self._on_surface or self._on_volume) and surface_indices is not None:
-            index = surface_indices
+    @property
+    def attributes(cls) -> set[str]:
+        return {'x'}
+
+    def __call__(self, **kwargs):
+        return self.energy(**kwargs).mean()
+
+    def check_input(self, **kwargs):
+        for attr in self.attributes:
+            if attr not in kwargs:
+                raise AttributeError(f'Input {attr} not found for {self.name}')
+
+    def energy(self, **kwargs):
+        self.check_input(**kwargs)
+        x = kwargs['x']
+
+        if (self._on_surface or self._on_volume) and 'surface_indices' in kwargs:
+            index = kwargs['surface_indices']
             if self._on_volume:
                 index = torch.ones(len(x), dtype=torch.bool, device=x.device)
-                index[surface_indices] = False
-            x, y, pred, y_grad, grad, hess = [arg[index]
-                                              for arg in [x, y, pred, y_grad, grad, hess]
-                                              if arg is not None]
+                index[kwargs['surface_indices']] = False
+            kwargs = {k: v[index] for k, v in kwargs.items() if k != 'surface_indices'}
 
         if self.enabled:
-            return self._energy(x=x, y=y, pred=pred,
-                                y_grad=y_grad, grad=grad, hess=hess,
-                                surface_indices=surface_indices)
+            return self._energy(**kwargs)
         return torch.zeros_like(x[..., 0])
 
     @abstractmethod
-    def _energy(self, *args, **kwargs):
+    def _energy(self, **kwargs):
         raise NotImplementedError()
 
 
@@ -57,108 +55,113 @@ class WeightedLoss(Loss, ABC):
         super().__init__(**kwargs)
         self.weight = FloatParameter('weight', 1, 0, 1)
 
-    def __call__(self, *args, **kwargs):
-        return Loss.__call__(self, *args, **kwargs) * (self.weight.value * 1000)
+    def __call__(self, **kwargs):
+        return Loss.__call__(self, **kwargs) * (self.weight.value * 1000)
 
 
 class CompositeLoss(Loss, Set):
-    def req_grad2(self):
+    @property
+    def attributes(self) -> set[str]:
+        attr = super().attributes
         for loss in self.children:
-            if loss.req_grad:
-                return True
-        return False
+            attr |= loss.attributes
+        return attr
 
     @property
     def losses(self) -> set[Loss]:
         return self.children
 
-    @property
-    def req_grad(self):
-        for loss in self.children:
-            if loss.req_grad:
-                return True
-        return False
-
-    @property
-    def req_hess(self):
-        for loss in self.children:
-            if loss.req_hess:
-                return True
-        return False
-
-    def _energy(self, *args, **kwargs):
+    def _energy(self, **kwargs):
         sum = 0.
         for loss in self.children:
-            sum = sum + loss(*args, **kwargs)
+            sum = sum + loss(**kwargs)
         return sum
 
 
 class Mse(WeightedLoss):
-    def _energy(self, y, pred, *args, **kwargs):
-        return (y - pred) ** 2
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'y_pred', 'y_gt'}
+
+    def _energy(self, y_gt, y_pred, **kwargs):
+        return (y_gt - y_pred) ** 2
 
 
 class Eikonal(WeightedLoss):
-    _req_grad = True
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'grad_pred'}
 
-    def _energy(self, grad, *args, **kwargs):
-        grad_norm = torch.linalg.norm(grad, axis=-1)
+    def _energy(self, grad_pred, **kwargs):
+        grad_norm = torch.linalg.norm(grad_pred, axis=-1)
         return (grad_norm - 1).abs()
 
 
 class EikonalRelaxed(WeightedLoss):
-    _req_grad = True
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.grad_threshold = FloatParameter('grad threshold', 0.8, 0, 1.)
         self.relu = torch.nn.ReLU()
 
-    def _energy(self, grad, *args, **kwargs):
-        grad_norm = torch.linalg.norm(grad, axis=-1)
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'grad_pred'}
+
+    def _energy(self, grad_pred, **kwargs):
+        grad_norm = torch.linalg.norm(grad_pred, axis=-1)
         return self.relu(self.grad_threshold.value - grad_norm)
 
 
 class Dirichlet(WeightedLoss):
-    _req_grad = True
     _on_surface = True
 
-    def _energy(self, grad, *args, **kwargs):
-        return (grad ** 2).sum(dim=-1)
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'grad_pred'}
+
+    def _energy(self, grad_pred, **kwargs):
+        return (grad_pred ** 2).sum(dim=-1)
 
 
 class Neumann(WeightedLoss):
-    _req_grad = True
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'grad_pred', 'grad_gt'}
 
-    def _energy(self, y_grad, grad, *args, **kwargs):
-        grad = torch.nn.functional.normalize(grad, dim=-1)
-        return 1 - (y_grad * grad).sum(dim=-1)
+    def _energy(self, grad_gt, grad_pred, **kwargs):
+        grad_pred = torch.nn.functional.normalize(grad_pred, dim=-1)
+        return 1 - (grad_gt * grad_pred).sum(dim=-1)
 
 
 class Laplacian(WeightedLoss):
-    _req_hess = True
     _on_surface = True
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'hess_pred'}
 
-    def _energy(self, hess, *args, **kwargs):
-        trace = torch.einsum("...ii", hess)  # trace of the hessian is the laplacian
+    def _energy(self, hess_pred, **kwargs):
+        trace = torch.einsum("...ii", hess_pred)  # trace of the hessian is the laplacian
 
         return trace
 
 
 class HessianDet(WeightedLoss):
-    _req_hess = True
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'hess_pred'}
 
-    def _energy(self, hess, *args, **kwargs):
-        determinants = torch.linalg.det(hess)
+    def _energy(self, hess_pred, **kwargs):
+        determinants = torch.linalg.det(hess_pred)
         return torch.abs(determinants)
 
 
 class GaussianCurvature(WeightedLoss):
-    _req_hess = True
     _on_surface = True
+
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'hess_pred', 'grad_pred'}
 
     def curvature(self, hess, grad):
         mat = torch.cat([hess, grad[..., None]], -1)
@@ -168,36 +171,37 @@ class GaussianCurvature(WeightedLoss):
         norm_4 = (grad ** 2).sum(dim=-1) ** 2
         return - determinants / norm_4
 
-    def _energy(self, grad, hess, *args, **kwargs):
-        curvature = self.curvature(hess, grad)
+    def _energy(self, hess_pred, grad_pred, **kwargs):
+        curvature = self.curvature(hess_pred, grad_pred)
         return curvature.abs()
 
 
 class DoubleThrough(GaussianCurvature):
-
     @staticmethod
     def double_through(x):
         pi = torch.pi
         return (64 * pi - 80) / (pi ** 4) * (x ** 4) - (64 * pi - 88) / (pi ** 3) * (x ** 3) + (16 * pi - 29) / (
                     pi ** 2) * (x ** 2) + 3 * x / pi
 
-    def _energy(self, *args, **kwargs):
-        energy = super()._energy(*args, **kwargs)
+    def _energy(self, **kwargs):
+        energy = super()._energy(**kwargs)
         return DoubleThrough.double_through(energy)
 
 
 class HessianAlign(WeightedLoss):
-    _req_grad = True
-    _req_hess = True
     _on_surface = True
+
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'hess_pred', 'grad_pred', 'y_pred'}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.delta = FloatParameter('delta', 10., 0.1, 100)
 
-    def _energy(self, pred, grad, hess, *args, **kwargs):
-        grad = torch.nn.functional.normalize(grad, dim=-1)
-        energy = torch.matmul(hess, grad.unsqueeze(-1)).squeeze().square().sum(dim=-1)
+    def _energy(self, y_pred, grad_pred, hess_pred, **kwargs):
+        grad = torch.nn.functional.normalize(grad_pred, dim=-1)
+        energy = torch.matmul(hess_pred, grad.unsqueeze(-1)).squeeze().square().sum(dim=-1)
 
-        weights = torch.exp(-self.delta.value * torch.abs(pred))
+        weights = torch.exp(-self.delta.value * torch.abs(y_pred))
         return energy * weights

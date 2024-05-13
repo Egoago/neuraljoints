@@ -51,11 +51,11 @@ class UIHandler:
 
     @classmethod
     def init(cls):
+        ps.set_program_name('Neural Joints')
         ps.init()
         ps.set_automatically_compute_scene_extents(False)
         ps.set_open_imgui_window_for_user_callback(False)
         ps.set_build_default_gui_panels(False)
-        ps.set_program_name('Neural Joints')
         ps.set_ground_plane_mode('none')
         ps.load_color_map('blue-red', 'media/colormap.png')
         io = imgui.GetIO()

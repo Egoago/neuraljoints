@@ -4,8 +4,9 @@ from abc import abstractmethod
 import torch
 
 from neuraljoints.geometry.base import Entity
-from neuraljoints.neural.embedding import NoEmbedding
-from neuraljoints.utils.parameters import IntParameter, ChoiceParameter, Parameter, FloatParameter
+from neuraljoints.geometry.implicit import Implicit
+from neuraljoints.neural.embedding import NoEmbedding, ImplicitEmbedding
+from neuraljoints.utils.parameters import IntParameter, ChoiceParameter, Parameter, FloatParameter, BoolParameter
 from neuraljoints.utils.utils import RegisteredMeta
 
 

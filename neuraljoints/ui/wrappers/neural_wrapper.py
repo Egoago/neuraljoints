@@ -99,21 +99,22 @@ class LossWrapper(ImplicitWrapper):
             return self.loss.hparams
 
         def forward(self, position):
-            y_grad, gradients, hessians = None, None, None
+            outputs = {'x': position}
             if not position.requires_grad and self.loss.req_grad:
                 position.requires_grad = True
 
-            y = self.target(position)
+            outputs['y_gt'] = self.target(position)
 
-            pred = self.model(position)
+            outputs['y_pred'] = self.model(position)
 
-            if self.loss.req_grad:
-                y_grad = gradient(y, position)
-                gradients = gradient(pred, position)
-            if self.loss.req_hess:
-                hessians = hessian(gradients, position)
+            if 'grad_gt' in self.loss.attributes:
+                outputs['grad_gt'] = gradient(outputs['y_gt'], position)
+            if 'grad_pred' in self.loss.attributes:
+                outputs['grad_pred'] = gradient(outputs['y_pred'], position)
+            if 'hess_pred' in self.loss.attributes:
+                outputs['hess_pred'] = hessian(outputs['grad_pred'], position)
 
-            return self.loss.energy(position, y, pred, y_grad=y_grad, grad=gradients, hess=hessians)
+            return self.loss.energy(**outputs)
 
     def __init__(self, loss: Loss, trainer: Trainer):
         super().__init__(object=LossWrapper.ImplicitLoss(loss, trainer.model, trainer.implicit))
@@ -166,20 +167,19 @@ class TrainerWrapper(EntityWrapper):
                 self.trainer.train()
 
         imgui.SameLine()
-        if imgui.Button('render') or (self.trainer.training and self.trainer.step % 5 == 0):
+        if imgui.Button('render') or (self.trainer.training and self.trainer.training_step % 5 == 0):
             self.changed = True
             IMPLICIT_PLANE.startup = True
 
         imgui.SameLine()
         if imgui.Button('rebuild'):
             self.trainer.reset()
-            self.trainer.sampler.prev_y = None
             self.changed = True
             self.network_wrapper.changed = True
             self.loss_wrapper.changed = True
 
         if self.trainer.training:
-            ratio = self.trainer.step / self.trainer.max_steps.value
+            ratio = self.trainer.training_step / self.trainer.max_steps.value
             imgui.ProgressBar(ratio, (-1, 0))
 
         if len(self.trainer.losses) > 0:
