@@ -72,7 +72,7 @@ class UIHandler:
 
     @classmethod
     def add_entity(cls, entity: Entity):
-        cls.drawables.append(get_wrapper(entity))
+        cls.drawables.insert(0, get_wrapper(entity))
 
     @classmethod
     def update(cls):
@@ -98,7 +98,7 @@ class UIHandler:
             imgui.TreePop()
 
         for drawable in cls.drawables:
-            drawable.draw(refresh=cls.drawables[0].changed)
+            drawable.draw(refresh=cls.drawables[-1].changed)
         imgui.End()
 
         if ps.window_requests_close():

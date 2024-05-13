@@ -17,8 +17,8 @@ from neuraljoints.utils.parameters import IntParameter, FloatParameter, BoolPara
 class ImplicitPlane(EntityWrapper):
     TYPE = None
 
-    def __init__(self):
-        super().__init__(object=Entity(name='Grid'))
+    def __init__(self, **kwargs):
+        super().__init__(object=Entity(name='Grid'), **kwargs)
         self.resolution = IntParameter('resolution', 100, 2, 200)
         self.bounds = Float3Parameter('bounds', [2, 2, 2], 1, 10)
         self.z = FloatParameter('z', 0, -1, 1)
@@ -26,16 +26,16 @@ class ImplicitPlane(EntityWrapper):
         self.surface = BoolParameter('surface', False)
         self.smooth = BoolParameter('smooth', False)
         self.isosurface = FloatParameter('isosurface', 0, -1, 1)
-        self.render = ChoiceParameter('render', 'normal', ['plain', 'normal', 'depth', 'position'])
+        self.render = ChoiceParameter('render', 'plain', ['plain', 'normal', 'depth', 'position'])
         self._mesh = None
         self._points = None
         self._grid = None
         self.selected: ImplicitWrapper = None
 
     @torch.no_grad()
-    def add_scalar_texture(self, name: str, implicit: Implicit = None, values: Union[np.ndarray, torch.Tensor] = None):
-        scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
-                       'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.9}
+    def add_scalar_texture(self, name: str, implicit: Implicit = None, values: Union[np.ndarray, torch.Tensor] = None, scalar_args=None):
+        if scalar_args is None:
+            scalar_args = {}
         if values is None:
             if implicit is None:
                 raise AttributeError('An implicit function or the direct values have to provided.')
@@ -109,6 +109,7 @@ class ImplicitPlane(EntityWrapper):
                 self.grid.remove_quantity(self.selected.implicit.name)
                 ps.remove_surface_mesh(self.selected.implicit.name, False)
         self.selected = implicit_wrapper
+        ps.request_redraw()
 
     def remove(self, implicit_wrapper: 'ImplicitWrapper'):
         if self.selected is not None and implicit_wrapper.implicit.name == self.selected.implicit.name:
@@ -144,12 +145,16 @@ class ImplicitPlane(EntityWrapper):
             else:
                 self.grid.remove_quantity(implicit.name)
             if self.surface.value:
-                self.add_surface(implicit)
+                self.add_surface(implicit, self.selected.surface_implicit, scalar_args=self.selected.scalar_args)
             else:
                 ps.remove_surface_mesh(implicit.name, False)
-            self.add_scalar_texture(implicit.name, values=values)
+            self.add_scalar_texture(implicit.name, values=values, scalar_args=self.selected.scalar_args)
 
-    def add_surface(self, implicit: Implicit):
+    def add_surface(self, implicit: Implicit, surface_implicit: Implicit = None, scalar_args=None):
+        if scalar_args is None:
+            scalar_args = {}
+        if surface_implicit is None:
+            surface_implicit = implicit
         with torch.no_grad():
             bounds = self.bounds.value.to(implicit.device)
             res = self.resolution.value // 2
@@ -159,7 +164,7 @@ class ImplicitPlane(EntityWrapper):
                                      indexing="ij")
             position = torch.stack([X, Y, Z], dim=-1)
 
-            values = implicit(position)
+            values = surface_implicit(position)
 
             vertices, faces = cumcubes.marching_cubes(values, self.isosurface.value)
             vertices = vertices / res * 2 * bounds - bounds + bounds / res
@@ -169,11 +174,15 @@ class ImplicitPlane(EntityWrapper):
 
         if self.gradient.value or self.render.value == 'normal':
             vertices.requires_grad = True
+        if self.gradient.value or self.render.value == 'normal' or self.render.value == 'plain':
             values = implicit(vertices)
+        if self.gradient.value or self.render.value == 'normal':
             gradients = gradient(values, vertices)
 
         with torch.no_grad():
-            if self.render.value == 'position':
+            if self.render.value == 'plain':
+                sm.add_scalar_quantity('values', values.detach().cpu().numpy(), enabled=True, **scalar_args)
+            elif self.render.value == 'position':
                 positions = (vertices/bounds[None, :] + 1.) / 2.
                 sm.add_color_quantity('position', positions.detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'depth':
@@ -185,7 +194,7 @@ class ImplicitPlane(EntityWrapper):
                 sm.add_color_quantity('Normals', ((gradients + 1.)/2.).detach().cpu().numpy(), enabled=True)
 
             if self.gradient.value:
-                sm.add_vector_quantity('Normals', (gradients * 0.1).detach().cpu().numpy(),
+                sm.add_vector_quantity('Normal Vectors', (gradients * 0.1).detach().cpu().numpy(),
                                        vectortype='ambient', defined_on='vertices',
                                        radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
 
@@ -224,6 +233,7 @@ class ImplicitPlane(EntityWrapper):
             with torch.no_grad():
                 iso = self.isosurface.value
                 implicit = self.selected.implicit
+                surface_implicit = self.selected.surface_implicit
                 origo, directions = self.get_cam_rays(implicit.device)
                 directions = directions.reshape(-1, 3)
                 bounds = self.bounds.value.to(implicit.device)
@@ -235,10 +245,13 @@ class ImplicitPlane(EntityWrapper):
 
                 points[trace_mask] = points[trace_mask] + distance[trace_mask, None] * directions[trace_mask]
 
-                i = 0
-                while trace_mask.sum() > 0 and i < 500:
-                    i += 1
-                    distance = implicit(points[trace_mask]) - iso
+            i = 0
+            while trace_mask.sum() > 0 and i < 500:
+                i += 1
+                distance = surface_implicit(points[trace_mask]) - iso
+                distance = distance.detach()
+                with torch.no_grad():
+                    points = points
                     points[trace_mask] = points[trace_mask] + distance[..., None] * directions[trace_mask]
 
                     bound_mask[trace_mask] = torch.all(points[trace_mask].abs() < bounds[None, :], dim=-1)
@@ -246,18 +259,20 @@ class ImplicitPlane(EntityWrapper):
                     trace_mask[trace_mask.clone()] = (~surface_mask[trace_mask]) * bound_mask[trace_mask]
 
             surface_mask = surface_mask * bound_mask
-            pc = ps.register_point_cloud('Sphere traced', points[surface_mask].cpu().numpy(),
+            points = points[surface_mask]
+            pc = ps.register_point_cloud('Sphere traced', points.detach().cpu().numpy(),
                                          point_render_mode='quad')
             #pc.add_scalar_quantity('mask', surface_mask.cpu().numpy(), enabled=True)
-
-            if self.render.value == 'position':
-                positions = (points[surface_mask]/bounds[None, :] + 1.) / 2.
+            if self.render.value == 'plain':
+                values = implicit(points)
+                pc.add_scalar_quantity('values', values.detach().cpu().numpy(), enabled=True, **self.selected.scalar_args)
+            elif self.render.value == 'position':
+                positions = (points/bounds[None, :] + 1.) / 2.
                 pc.add_color_quantity('position', positions.detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'depth':
-                depth = torch.linalg.norm(points[surface_mask]-origo[None, :], dim=-1)
+                depth = torch.linalg.norm(points-origo[None, :], dim=-1)
                 pc.add_scalar_quantity('depth', depth.detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'normal':
-                points = points[surface_mask]
                 points.requires_grad = True
                 distance = implicit(points)
                 gradients = gradient(distance, points).detach().cpu().numpy()
@@ -271,9 +286,18 @@ IMPLICIT_PLANE = ImplicitPlane()  # easier than using singleton
 class ImplicitWrapper(EntityWrapper):
     TYPE = Implicit
 
+    def __init__(self, object: TYPE, **kwargs):
+        super().__init__(object, **kwargs)
+        self.scalar_args = {'datatype': 'symmetric', 'cmap': 'blue-red',
+                            'isolines_enabled': True, 'isoline_width': 0.1, 'isoline_darkness': 0.9}
+
     @property
     def implicit(self) -> Implicit:
         return self.object
+
+    @property
+    def surface_implicit(self) -> Implicit:
+        return self.implicit
 
     def draw_ui(self) -> bool:
         changed, select = imgui.Checkbox('', self == IMPLICIT_PLANE.selected)
@@ -282,7 +306,7 @@ class ImplicitWrapper(EntityWrapper):
         elif self == IMPLICIT_PLANE.selected:
             IMPLICIT_PLANE.select(None)
         imgui.SameLine()
-        super().draw_ui()
+        EntityWrapper.draw_ui(self)
         self.changed |= changed
         return self.changed
 

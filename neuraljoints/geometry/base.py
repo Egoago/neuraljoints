@@ -45,8 +45,8 @@ class Set(Entity):
     def empty(self):
         self.children = set()
 
-    def foreach(self, func):
-        return [func(c) for c in self.children]
+    def foreach(self, func, **kwargs):
+        return [func(c, **kwargs) for c in self.children]
 
     def __contains__(self, child) -> bool:
         return child in self.children

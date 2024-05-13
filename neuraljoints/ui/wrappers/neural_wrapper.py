@@ -1,14 +1,15 @@
+import torch
 from polyscope import imgui
 import polyscope as ps
 
 from neuraljoints.geometry.implicit import Implicit
-from neuraljoints.neural.autograd import gradient
+from neuraljoints.neural.autograd import gradient, hessian
 from neuraljoints.neural.losses import CompositeLoss, Loss
 from neuraljoints.neural.model import Network, Layer
 from neuraljoints.neural.sampling import Sampler
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, get_wrapper
-from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper
+from neuraljoints.ui.wrappers.implicit_wrapper import ImplicitWrapper, IMPLICIT_PLANE
 from neuraljoints.utils.parameters import BoolParameter
 
 
@@ -26,11 +27,6 @@ class NetworkWrapper(ImplicitWrapper):
 
         def forward(self, position):
             return self.model(position)
-
-        def gradient(self, position):   # TODO refactor
-            position.requires_grad = True
-            pred = self.model(position)
-            return gradient(pred, position)
 
     def __init__(self, network: Network):
         super().__init__(object=NetworkWrapper.ImplicitNetwork(network))
@@ -75,10 +71,58 @@ class SamplerWrapper(EntityWrapper):
         return self.object
 
     def draw_geometry(self):
-        if self.sampler.prev_x is not None and self.render_points.value:
-            ps.register_point_cloud('sampled points', self.sampler.prev_x.detach().cpu().numpy())
-        else:
-            ps.remove_point_cloud('sampled points', False)
+        with torch.no_grad():
+            if self.sampler.prev_x is not None and self.render_points.value:
+                pc = ps.register_point_cloud('sampled points', self.sampler.prev_x.detach().cpu().numpy())
+                surface_indices = self.sampler.surface_indices
+                if len(surface_indices) > 0:
+                    mask = torch.zeros(len(self.sampler.prev_x), device='cpu', dtype=torch.bool)
+                    mask[surface_indices] = True
+                    pc.add_scalar_quantity('type', mask.numpy(), enabled=True)
+            else:
+                ps.remove_point_cloud('sampled points', False)
+
+
+class LossWrapper(ImplicitWrapper):
+    TYPE = Loss
+
+    class ImplicitLoss(Implicit):    # TODO refactor
+        def __init__(self, loss: Loss, model: Network, target: Implicit, **kwargs):
+            super().__init__(**kwargs)
+            self.name = loss.name
+            self.loss = loss
+            self.model = model
+            self.target = target
+
+        @property
+        def hparams(self):
+            return self.loss.hparams
+
+        def forward(self, position):
+            y_grad, gradients, hessians = None, None, None
+            if not position.requires_grad and self.loss.req_grad:
+                position.requires_grad = True
+
+            y = self.target(position)
+
+            pred = self.model(position)
+
+            if self.loss.req_grad:
+                y_grad = gradient(y, position)
+                gradients = gradient(pred, position)
+            if self.loss.req_hess:
+                hessians = hessian(gradients, position)
+
+            return self.loss.energy(position, y, pred, y_grad=y_grad, grad=gradients, hess=hessians)
+
+    def __init__(self, loss: Loss, trainer: Trainer):
+        super().__init__(object=LossWrapper.ImplicitLoss(loss, trainer.model, trainer.implicit))
+        self.scalar_args = {'cmap': 'viridis'}
+        self.implicit_network = NetworkWrapper.ImplicitNetwork(trainer.model)
+
+    @property
+    def surface_implicit(self) -> Implicit:
+        return self.implicit_network
 
 
 class CompositeLossWrapper(SetWrapper):
@@ -97,7 +141,7 @@ class TrainerWrapper(EntityWrapper):
     def __init__(self, trainer: Trainer):
         super().__init__(object=trainer)
         self.last_draw = None
-        self.loss_wrapper = get_wrapper(trainer.loss_fn)
+        self.loss_wrapper = get_wrapper(trainer.loss_fn, trainer=trainer)
         self.sampler_wrapper = get_wrapper(trainer.sampler)
         self.network_wrapper = get_wrapper(trainer.model)
 
@@ -124,7 +168,7 @@ class TrainerWrapper(EntityWrapper):
         imgui.SameLine()
         if imgui.Button('render') or (self.trainer.training and self.trainer.step % 5 == 0):
             self.changed = True
-            self.network_wrapper.changed = True
+            IMPLICIT_PLANE.startup = True
 
         imgui.SameLine()
         if imgui.Button('rebuild'):
@@ -132,6 +176,7 @@ class TrainerWrapper(EntityWrapper):
             self.trainer.sampler.prev_y = None
             self.changed = True
             self.network_wrapper.changed = True
+            self.loss_wrapper.changed = True
 
         if self.trainer.training:
             ratio = self.trainer.step / self.trainer.max_steps.value
@@ -148,4 +193,3 @@ class TrainerWrapper(EntityWrapper):
     def draw_geometry(self):
         super().draw_geometry()
         self.sampler_wrapper.draw_geometry()
-        self.network_wrapper.draw_geometry()

@@ -1,6 +1,6 @@
 
 class Drawable:
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.changed = False
         self.startup = True

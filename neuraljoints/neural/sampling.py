@@ -96,8 +96,6 @@ class PullSampler(HierarchicalSampler):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.prev_grad = None
-        self.noise_var.value = 0.01
-        self.noise_var.initial = 0.01
 
     def _sample(self):
         x = super()._sample()

@@ -12,8 +12,8 @@ from neuraljoints.ui.wrappers.wrapper import Wrapper
 class EntityWrapper(Wrapper):
     TYPE = Entity
 
-    def __init__(self, object: TYPE):
-        super().__init__()
+    def __init__(self, object: TYPE, **kwargs):
+        super().__init__(**kwargs)
         self.object = object
         self.id = str(uuid.uuid4())
         self.color = [random.random() for _ in range(3)]
@@ -39,9 +39,11 @@ class EntityWrapper(Wrapper):
 class SetWrapper(EntityWrapper):
     TYPE = Set
 
-    def __init__(self, object: TYPE):
-        super().__init__(object)
-        self.child_wrappers: list[EntityWrapper] = object.foreach(get_wrapper)
+    def __init__(self, object: TYPE, **kwargs):
+        super().__init__(object, **kwargs)
+        self._changed = False
+        self.kwargs = kwargs
+        self.child_wrappers: list[EntityWrapper] = object.foreach(get_wrapper, **kwargs)
 
     @classmethod
     @property
@@ -58,6 +60,7 @@ class SetWrapper(EntityWrapper):
         return False
 
     def draw_ui(self) -> bool:
+        Wrapper.draw_ui(self)
         imgui.PushId(self.id)
         if imgui.TreeNodeEx(self.object.name, imgui.ImGuiTreeNodeFlags_DefaultOpen):
             self.draw_parameters()
@@ -85,7 +88,7 @@ class SetWrapper(EntityWrapper):
                         if imgui.Button(choice.__name__):
                             new_entity = choice()
                             object.add(new_entity)
-                            self.child_wrappers.append(get_wrapper(new_entity))
+                            self.child_wrappers.append(get_wrapper(new_entity, **self.kwargs))
                             imgui.CloseCurrentPopup()
                     imgui.EndPopup()
             imgui.TreePop()
@@ -101,8 +104,8 @@ class SetWrapper(EntityWrapper):
 class ProxyWrapper(EntityWrapper):
     TYPE = Proxy
 
-    def __init__(self, object: TYPE):
-        super().__init__(object)
+    def __init__(self, object: TYPE, **kwargs):
+        super().__init__(object, **kwargs)
         self.child_wrapper = None if object.child is None else get_wrapper(object.child)
 
     @classmethod
@@ -156,7 +159,7 @@ class ProxyWrapper(EntityWrapper):
             self.child_wrapper.draw_geometry()
 
 
-def get_wrapper(entity: Entity) -> EntityWrapper:
+def get_wrapper(entity: Entity, **kwargs) -> EntityWrapper:
     closest_class = None
     min_distance = 10
     wrappers = {w for w in EntityWrapper.subclasses}
@@ -176,4 +179,4 @@ def get_wrapper(entity: Entity) -> EntityWrapper:
     if closest_class is None:
         raise TypeError(f'Wrapper not found for {entity}')
 
-    return closest_class(entity)
+    return closest_class(entity, **kwargs)
