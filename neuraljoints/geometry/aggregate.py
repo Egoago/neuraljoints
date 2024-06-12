@@ -2,12 +2,12 @@ from abc import abstractmethod
 
 import torch
 
-from neuraljoints.geometry.base import Set
-from neuraljoints.geometry.implicit import Implicit
+from neuraljoints.geometry.base import List
+from neuraljoints.geometry.implicit import Implicit, Offset
 from neuraljoints.utils.parameters import FloatParameter
 
 
-class Aggregate(Implicit, Set):
+class Aggregate(Implicit, List):
     def forward(self, position):
         if len(self.children) == 0:
             return torch.zeros_like(position[..., 0])
@@ -87,4 +87,83 @@ class SuperElliptic(Aggregate):
         r = torch.tensor([getattr(self, f'r{i + 1}').value for i in range(len(self.children))],
                          dtype=values[0].dtype, device=values[0].device)
         return 1 - (torch.clamp((1 - p) / r, min=0) ** self.t.value).sum(dim=-1)
+
+
+class IPatch(Aggregate):
+    def __init__(self, *args, children: list[Implicit]=None, **kwargs):
+        self.w0 = FloatParameter('w0', 1, min=-1., max=1.)
+        if children is not None:
+            for i in range(len(self.children)):
+                name = f'w{i+1}'
+                setattr(self, name, FloatParameter(name, 1, min=-1., max=1.))
+            children = children + self.get_boundaries(children)
+        super().__init__(*args, children=children, **kwargs)
+
+    def add(self, child):
+        n = len(self.children) // 2
+        implicits = self.children[:n]
+        boundaries = self.children[n:]
+        name = f'w{n+1}'
+        setattr(self, name, FloatParameter(name, 1, min=-1., max=1.))
+        boundary = Offset(child=child)
+        boundary.offset.value = 0.1
+        implicits.append(child)
+        boundaries.append(boundary)
+        self.children = implicits + boundaries
+
+    def remove(self, child):
+        n = len(self.children) // 2
+        implicits = self.children[:n]
+        boundaries = self.children[n:]
+        i = implicits.index(child)
+        implicits.pop(i)
+        boundaries.pop(i)
+        delattr(self, f'w{n}')
+        self.children = implicits + boundaries
+
+    def get_boundaries(self, implicits) -> list[Implicit]:
+        boundaries = []
+        for implicit in implicits:
+            boundary = Offset(child=implicit)
+            boundary.offset.value = 0.1
+            boundaries.append(boundary)
+        return boundaries
+
+    def reduce(self, values: [torch.Tensor]):
+        implicits, boundaries = torch.stack(values, dim=0).chunk(2, dim=0)
+        boundaries = boundaries ** 2
+        b_prod = boundaries.prod(dim=0)
+        dividend, divisor = -self.w0.value * b_prod, 0
+        for i in range(len(implicits)):
+            wi = getattr(self, f'w{i + 1}').value
+            temp = wi * b_prod / boundaries[i]
+            dividend += temp * implicits[i]
+            divisor += temp
+        return dividend
+
+
+class IPatchManual(Aggregate):
+    def __init__(self, *args, **kwargs):
+        implicits = Union(name='implicits')
+        boundaries = Union(name='boundaries')
+        self.w0 = FloatParameter('w0', 1, min=-1., max=1.)
+        super().__init__(*args, children=[implicits, boundaries], **kwargs)
+
+    def forward(self, position):
+        if len(self.children[0].children) == len(self.children[1].children) and len(self.children[0].children) > 0:
+            implicits = torch.stack(self.children[0].foreach(lambda child: child(position)), dim=0)
+            boundaries = torch.stack(self.children[1].foreach(lambda child: child(position)), dim=0)
+            return self.reduce([implicits, boundaries])
+        return torch.zeros_like(position[..., 0])
+
+    def reduce(self, values: [torch.Tensor]):
+        implicits, boundaries = values
+        boundaries = boundaries ** 2
+        b_prod = boundaries.prod(dim=0)
+        dividend, divisor = -self.w0.value * b_prod, 0
+        for i in range(len(implicits)):
+            temp = b_prod / boundaries[i]
+            dividend += temp * implicits[i]
+            divisor += temp
+        return dividend
 

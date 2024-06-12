@@ -3,7 +3,6 @@ from abc import abstractmethod
 
 import torch
 
-from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.neural.embedding import NoEmbedding
 from neuraljoints.utils.parameters import IntParameter, ChoiceParameter, Parameter, FloatParameter
@@ -125,9 +124,12 @@ class ReLU(LinearLayer):
 
 
 class Squared(LinearLayer):
-    def forward(self, x):
-        x = super().forward(x)
-        return torch.clamp_min(x, 0)**2
+    def __init__(self, in_dim, out_dim, **kwargs):
+        def squared(x):
+            return torch.clamp_min(x, 0) ** 2
+
+        kwargs['activation'] = squared
+        super().__init__(in_dim, out_dim, **kwargs)
 
 
 class SoftPlus(LinearLayer):

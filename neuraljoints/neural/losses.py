@@ -2,7 +2,7 @@ from abc import abstractmethod, ABC
 
 import torch
 
-from neuraljoints.geometry.base import Set
+from neuraljoints.geometry.base import List
 from neuraljoints.neural.autograd import gaussian_curvature
 from neuraljoints.neural.sampling import Pipeline
 from neuraljoints.utils.parameters import FloatParameter, ChoiceParameter
@@ -52,7 +52,7 @@ class WeightedLoss(Loss, ABC):
         return Loss.__call__(self, **kwargs) * (self.weight.value * 1000)
 
 
-class CompositeLoss(Loss, Set):
+class CompositeLoss(Loss, List):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.defined_on = None  # disable sampling setting

@@ -31,19 +31,19 @@ class Entity(metaclass=RegisteredMeta):
             Entity.__names.remove(self.name)
 
 
-class Set(Entity):
+class List(Entity):
     def __init__(self, children=None, **kwargs):
         super().__init__(**kwargs)
-        self.children = set() if children is None else set(children)
+        self.children = [] if children is None else list(children)
 
     def add(self, child):
-        self.children.add(child)
+        self.children.append(child)
 
     def remove(self, child):
         self.children.remove(child)
 
     def empty(self):
-        self.children = set()
+        self.children = []
 
     def foreach(self, func, **kwargs):
         return [func(c, **kwargs) for c in self.children]

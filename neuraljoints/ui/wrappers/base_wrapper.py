@@ -4,7 +4,7 @@ from abc import abstractmethod
 
 from polyscope_bindings import imgui
 
-from neuraljoints.geometry.base import Entity, Set, Proxy
+from neuraljoints.geometry.base import Entity, List, Proxy
 from neuraljoints.ui.wrappers.parameter_wrapper import ParameterWrapper
 from neuraljoints.ui.wrappers.wrapper import Wrapper
 
@@ -17,6 +17,7 @@ class EntityWrapper(Wrapper):
         self.object = object
         self.id = str(uuid.uuid4())
         self.color = [random.random() for _ in range(3)]
+        self.type_bar = True
 
     def draw_parameters(self, parameters=None):
         if parameters is None:
@@ -36,8 +37,8 @@ class EntityWrapper(Wrapper):
         return self.changed
 
 
-class SetWrapper(EntityWrapper):
-    TYPE = Set
+class ListWrapper(EntityWrapper):
+    TYPE = List
 
     def __init__(self, object: TYPE, **kwargs):
         super().__init__(object, **kwargs)
@@ -53,8 +54,11 @@ class SetWrapper(EntityWrapper):
 
     def remove_wrapper(self, wrapper: EntityWrapper) -> bool:
         if wrapper is not None and wrapper in self.child_wrappers:
-            self.child_wrappers.remove(wrapper)
             self.object.remove(wrapper.object)
+            wrapper.object.unlink()
+            for child_wrapper in self.child_wrappers:
+                child_wrapper.unlink()
+            self.child_wrappers = self.object.foreach(get_wrapper, **self.kwargs)
             self.changed = True
             return True
         return False
@@ -69,7 +73,7 @@ class SetWrapper(EntityWrapper):
                 for wrapper in self.child_wrappers:
                     self.changed |= wrapper.draw_ui()
             else:  # interactive UI
-                object: Set = self.object
+                object: List = self.object
                 child_to_remove = None
                 for wrapper in self.child_wrappers:
                     imgui.PushID(wrapper.id + 'node')
@@ -84,12 +88,33 @@ class SetWrapper(EntityWrapper):
                 if imgui.Button(' + '):
                     imgui.OpenPopup(self.id + 'choices')
                 if imgui.BeginPopup(self.id + 'choices'):
-                    for choice in self.choices:
-                        if imgui.Button(choice.__name__):
-                            new_entity = choice()
-                            object.add(new_entity)
-                            self.child_wrappers.append(get_wrapper(new_entity, **self.kwargs))
-                            imgui.CloseCurrentPopup()
+                    if imgui.BeginTabBar('choices tab bar'):
+                        selected, _ = imgui.BeginTabItem('types', True)
+                        if not selected:
+                            self.type_bar = False
+                        if self.type_bar:
+                            for choice in self.choices:
+                                if imgui.Button(choice.__name__):
+                                    new_entity = choice()
+                                    object.add(new_entity)
+                                    for child_wrapper in self.child_wrappers:
+                                        child_wrapper.unlink()
+                                    self.child_wrappers = object.foreach(get_wrapper, **self.kwargs)
+                                    imgui.CloseCurrentPopup()
+                            imgui.EndTabItem()
+                        selected, _ = imgui.BeginTabItem('instances', True)
+                        if not selected:
+                            self.type_bar = True
+                        if not self.type_bar:
+                            instances = set().union(*[set(cls.instances) for cls in self.choices if hasattr(cls, 'instances')])
+                            instances = sorted(instances, key=lambda x: x.name)
+                            for instance in instances:
+                                if imgui.Button(instance.name):
+                                    object.add(instance)
+                                    self.child_wrappers = object.foreach(get_wrapper, **self.kwargs)
+                                    imgui.CloseCurrentPopup()
+                            imgui.EndTabItem()
+                        imgui.EndTabBar()
                     imgui.EndPopup()
             imgui.TreePop()
         imgui.PopID()
@@ -116,6 +141,8 @@ class ProxyWrapper(EntityWrapper):
 
     def empty(self) -> bool:
         if self.child_wrapper is not None:
+            self.child_wrapper.unlink()
+            self.child_wrapper.object.child.unlink()
             self.child_wrapper = None
             self.object.child = None
             self.changed = True
@@ -142,12 +169,32 @@ class ProxyWrapper(EntityWrapper):
                     if imgui.Button(' + '):
                         imgui.OpenPopup(self.id + 'choices')
                     if imgui.BeginPopup(self.id + 'choices'):
-                        for choice in self.choices:
-                            if imgui.Button(choice.__name__):
-                                new_entity = choice()
-                                self.object.child = new_entity
-                                self.child_wrapper = get_wrapper(self.object.child)
-                                imgui.CloseCurrentPopup()
+                        if imgui.BeginTabBar('choices tab bar'):
+                            selected, _ = imgui.BeginTabItem('types', True)
+                            if not selected:
+                                self.type_bar = False
+                            if self.type_bar:
+                                for choice in self.choices:
+                                    if imgui.Button(choice.__name__):
+                                        new_entity = choice()
+                                        self.object.child = new_entity
+                                        self.child_wrapper = get_wrapper(self.object.child)
+                                        imgui.CloseCurrentPopup()
+                                imgui.EndTabItem()
+                            selected, _ = imgui.BeginTabItem('instances', True)
+                            if not selected:
+                                self.type_bar = True
+                            if not self.type_bar:
+                                instances = set().union(
+                                    *[set(cls.instances) for cls in self.choices if hasattr(cls, 'instances')])
+                                instances = sorted(instances, key=lambda x: x.name)
+                                for instance in instances:
+                                    if imgui.Button(instance.name):
+                                        self.object.child = instance
+                                        self.child_wrapper = get_wrapper(self.object.child)
+                                        imgui.CloseCurrentPopup()
+                                imgui.EndTabItem()
+                            imgui.EndTabBar()
                         imgui.EndPopup()
             imgui.TreePop()
         imgui.PopID()

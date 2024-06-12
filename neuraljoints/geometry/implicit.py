@@ -64,7 +64,7 @@ class Plane(SDF):
         return position[..., 1]
 
 
-class ImplicitProxy(Implicit, Proxy):
+class ImplicitProxy(Proxy, Implicit):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.transform = None

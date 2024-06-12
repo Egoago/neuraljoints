@@ -7,9 +7,10 @@ from neuraljoints.utils.parameters import BoolParameter
 
 
 class BlendingNetwork(Network):
-    def __init__(self, implicits: list[Implicit], **kwargs):
+    def __init__(self, implicits: list[Implicit], boundaries: list[Implicit], **kwargs):
         self.gradient = BoolParameter('use gradient', False)
         self.implicits = implicits
+        self.boundaries = boundaries
         super().__init__(**kwargs)
 
     def build(self):
@@ -18,9 +19,10 @@ class BlendingNetwork(Network):
 
 
 class BlendingTrainer(Trainer):
-    def __init__(self, model: BlendingNetwork, implicits: list[Implicit], **kwargs):
+    def __init__(self, model: BlendingNetwork, **kwargs):
         super().__init__(model=model, implicit=Implicit(name='Dummy'), **kwargs)
-        self.implicits = implicits
+        self.implicits = model.implicits
+        self.boundaries = model.boundaries
 
     def step(self):
         outputs = self.sampler()

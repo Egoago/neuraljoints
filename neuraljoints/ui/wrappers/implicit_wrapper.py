@@ -3,7 +3,7 @@ from polyscope import imgui
 from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit, ImplicitProxy
-from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, ProxyWrapper
+from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, ListWrapper, ProxyWrapper
 from neuraljoints.ui.wrappers.implicit_plane import IMPLICIT_PLANE
 
 
@@ -40,7 +40,7 @@ class ImplicitWrapper(EntityWrapper):
         IMPLICIT_PLANE.remove(self)
 
 
-class AggregateWrapper(SetWrapper, ImplicitWrapper):
+class AggregateWrapper(ListWrapper, ImplicitWrapper):
     TYPE = Aggregate
 
     def draw_ui(self) -> bool:
@@ -63,7 +63,7 @@ class AggregateWrapper(SetWrapper, ImplicitWrapper):
 
     def draw_geometry(self):
         ImplicitWrapper.draw_geometry(self)
-        SetWrapper.draw_geometry(self)
+        ListWrapper.draw_geometry(self)
 
 
 class ImplicitProxyWrapper(ProxyWrapper, ImplicitWrapper):
