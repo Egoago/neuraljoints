@@ -77,6 +77,17 @@ class Inverse(ImplicitProxy):
         return torch.zeros_like(position[..., 0])
 
 
+class Offset(ImplicitProxy):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.offset = FloatParameter('offset', 0., -1., 1.)
+
+    def forward(self, position):
+        if self.child is not None:
+            return self.child(position) - self.offset.value
+        return torch.zeros_like(position[..., 0])
+
+
 class SdfToUdf(ImplicitProxy):
     @property
     def sdf(self) -> SDF:
