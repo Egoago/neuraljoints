@@ -8,6 +8,9 @@ class IOListener:
         super().__init__(**kwargs)
         IOListener.io_listeners.append(self)
 
+    def on_mouse_hover(self, screen_coords):
+        pass
+
     def on_mouse_clicked(self, screen_coords, button):
         pass
 
@@ -26,6 +29,7 @@ class IOHandler:
     def update(cls, io):
         screen_coords = io.MousePos
         for button in range(imgui.ImGuiMouseButton_COUNT):
+            [l.on_mouse_hover(screen_coords) for l in IOListener.io_listeners]
             if imgui.IsMouseClicked(button):
                 [l.on_mouse_clicked(screen_coords, button) for l in IOListener.io_listeners]
             if imgui.IsMouseDoubleClicked(button):

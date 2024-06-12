@@ -9,11 +9,13 @@ from polyscope import imgui
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit
 from neuraljoints.neural.autograd import gradient, gaussian_curvature, hessian
+from neuraljoints.ui.io import IOListener
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper
+from neuraljoints.ui.wrappers.colorbar import ColorBar
 from neuraljoints.utils.parameters import IntParameter, Float3Parameter, FloatParameter, BoolParameter, ChoiceParameter
 
 
-class ImplicitPlane(EntityWrapper):
+class ImplicitPlane(EntityWrapper, IOListener):
     TYPE = None
 
     def __init__(self, **kwargs):
@@ -30,6 +32,7 @@ class ImplicitPlane(EntityWrapper):
         self._points = None
         self._grid = None
         self.selected = None
+        self.color_bar = ColorBar(z=self.z, bounds=self.bounds)
 
     @torch.no_grad()
     def add_scalar_texture(self, name: str, implicit: Implicit = None,
@@ -43,6 +46,7 @@ class ImplicitPlane(EntityWrapper):
         values = values.reshape(self.resolution.value, self.resolution.value)
         if isinstance(values, torch.Tensor):
             values = values.cpu().numpy()
+        self.color_bar.update(values, scalar_args)
         self.mesh.add_scalar_quantity(name, values, defined_on='texture', param_name="uv",
                                       enabled=True, **scalar_args)
 
@@ -115,12 +119,16 @@ class ImplicitPlane(EntityWrapper):
         if self.selected is not None and implicit_wrapper.implicit.name == self.selected.implicit.name:
             self.select(None)
 
+    def reset(self):
+        self._mesh = None
+        self._points = None
+        self._grid = None
+        self.color_bar.reset()
+
     def draw_ui(self):
         super().draw_ui()
         if self.changed:
-            self._mesh = None
-            self._points = None
-            self._grid = None
+            self.reset()
         if self.selected is not None:
             self.changed |= self.selected.changed
             if imgui.Button('trace'):
@@ -149,6 +157,7 @@ class ImplicitPlane(EntityWrapper):
             else:
                 ps.remove_surface_mesh(implicit.name, False)
             self.add_scalar_texture(implicit.name, values=values, scalar_args=self.selected.scalar_args)
+            self.color_bar.draw_geometry()
 
     def add_surface(self, implicit: Implicit, surface_implicit: Implicit = None, scalar_args=None):
         if scalar_args is None:
@@ -290,6 +299,18 @@ class ImplicitPlane(EntityWrapper):
                 hess = hessian(grad, points)
                 g_curv = gaussian_curvature(hess, grad).detach().cpu().numpy()
                 pc.add_scalar_quantity('gaussian curvature', g_curv, enabled=True, cmap='viridis')
+
+    def on_mouse_hover(self, screen_coords):
+        if self.selected is not None:
+            implicit: Implicit = self.selected.implicit
+            x = ps.screen_coords_to_world_position(screen_coords)
+            if torch.all(torch.tensor(x).abs() < self.bounds.value):
+                x = torch.tensor(x, device=implicit.device, dtype=torch.float32)
+                value = implicit(x)
+                self.color_bar.highlighted = value.item()
+            else:
+                self.color_bar.highlighted = None
+            self.color_bar.draw_geometry()
 
 
 IMPLICIT_PLANE = ImplicitPlane()  # easier than using singleton

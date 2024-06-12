@@ -59,7 +59,7 @@ class UIHandler:
         ps.set_ground_plane_mode('none')
         ps.load_color_map('blue-red', 'media/colormap.png')
         io = imgui.GetIO()
-        UIHandler.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 25.)
+        UIHandler.font = io.Fonts.AddFontFromFileTTF("media/IBMPlexMono-Regular.ttf", 20.)
         UIHandler.__set_camera()
         UIHandler.open = True
 
@@ -123,3 +123,4 @@ class UIHandler:
                 pc.add_vector_quantity(axis, np.array([vector]), color=vector, **kwargs)
         else:
             ps.remove_point_cloud("origo", False)
+

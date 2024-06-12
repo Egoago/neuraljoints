@@ -5,16 +5,17 @@ import torch
 from neuraljoints.geometry.base import Set
 from neuraljoints.neural.autograd import gaussian_curvature
 from neuraljoints.neural.sampling import Pipeline
-from neuraljoints.utils.parameters import FloatParameter
+from neuraljoints.utils.parameters import FloatParameter, ChoiceParameter
 
 
 class Loss(Pipeline):
-    _on_surface = False
-    _on_volume = False
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.defined_on = ChoiceParameter('defined on', 'all', ['all', 'surface', 'volume', 'none'])
 
     @property
     def enabled(self):
-        return True
+        return self.defined_on.value != 'none'
 
     @property
     def attributes(cls) -> set[str]:
@@ -27,16 +28,15 @@ class Loss(Pipeline):
         self.check_input(**kwargs)
         x = kwargs['x']
 
-        if (self._on_surface or self._on_volume) and 'surface_indices' in kwargs:
-            index = kwargs['surface_indices']
-            if self._on_volume:
-                index = torch.ones(len(x), dtype=torch.bool, device=x.device)
-                index[kwargs['surface_indices']] = False
-            kwargs = {k: v[index] for k, v in kwargs.items() if k != 'surface_indices'}
-
         if self.enabled:
+            if self.defined_on.value != 'all' and 'surface_indices' in kwargs:
+                index = kwargs['surface_indices']
+                if self.defined_on.value in ['volume', 'all']:
+                    index = torch.ones(len(x), dtype=torch.bool, device=x.device)
+                    index[kwargs['surface_indices']] = False
+                kwargs = {k: v[index] for k, v in kwargs.items() if k != 'surface_indices'}
             return self._energy(**kwargs)
-        return torch.zeros_like(x[..., 0])
+        return torch.zeros_like(x[..., 0], requires_grad=x.requires_grad)
 
     @abstractmethod
     def _energy(self, **kwargs):
@@ -53,6 +53,14 @@ class WeightedLoss(Loss, ABC):
 
 
 class CompositeLoss(Loss, Set):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.defined_on = None  # disable sampling setting
+
+    @property
+    def enabled(self):
+        return True
+
     @property
     def attributes(self) -> set[str]:
         attr = super().attributes
@@ -63,6 +71,13 @@ class CompositeLoss(Loss, Set):
     @property
     def losses(self) -> set[Loss]:
         return self.children
+
+    def energy(self, **kwargs):
+        self.check_input(**kwargs)
+
+        if self.enabled:
+            return self._energy(**kwargs)
+        return torch.zeros_like(kwargs['x'][..., 0])
 
     def _energy(self, **kwargs):
         sum = 0.
@@ -106,7 +121,6 @@ class EikonalRelaxed(WeightedLoss):
 
 
 class Dirichlet(WeightedLoss):
-    _on_surface = True
 
     @property
     def attributes(self) -> set[str]:
@@ -127,7 +141,9 @@ class Neumann(WeightedLoss):
 
 
 class Laplacian(WeightedLoss):
-    _on_surface = True
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.defined_on.reset(initial='surface')
 
     @property
     def attributes(self) -> set[str]:
@@ -150,7 +166,9 @@ class HessianDet(WeightedLoss):
 
 
 class GaussianCurvature(WeightedLoss):
-    _on_surface = True
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.defined_on.reset(initial='surface')
 
     @property
     def attributes(self) -> set[str]:
@@ -174,15 +192,14 @@ class DoubleThrough(GaussianCurvature):
 
 
 class HessianAlign(WeightedLoss):
-    _on_surface = True
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.delta = FloatParameter('delta', 10., 0.1, 100)
+        self.defined_on.reset(initial='surface')
 
     @property
     def attributes(self) -> set[str]:
         return super().attributes | {'hess_pred', 'grad_pred', 'y_pred'}
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.delta = FloatParameter('delta', 10., 0.1, 100)
 
     def _energy(self, y_pred, grad_pred, hess_pred, **kwargs):
         grad = torch.nn.functional.normalize(grad_pred, dim=-1)

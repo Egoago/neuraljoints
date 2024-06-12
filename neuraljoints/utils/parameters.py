@@ -63,7 +63,9 @@ class ChoiceParameter(Parameter):
         if value in self.choices:
             self._value = value
 
-    def reset(self):
+    def reset(self, initial=None):
+        if initial is not None:
+            self.initial = initial
         self._value = self.initial
 
 
