@@ -8,7 +8,7 @@ from neuraljoints.geometry.base import Entity
 from neuraljoints.ui.drawable import Drawable
 from neuraljoints.ui.io import IOHandler
 from neuraljoints.ui.wrappers.base_wrapper import get_wrapper
-from neuraljoints.ui.wrappers.grid import IMPLICIT_PLANE
+from neuraljoints.ui.wrappers.implicit_plane import IMPLICIT_PLANE
 from neuraljoints.utils.utils import redirect_stdout
 
 

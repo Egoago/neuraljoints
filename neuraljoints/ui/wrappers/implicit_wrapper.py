@@ -4,7 +4,7 @@ from neuraljoints.geometry.aggregate import Aggregate
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit, ImplicitProxy
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper, SetWrapper, ProxyWrapper
-from neuraljoints.ui.wrappers.grid import IMPLICIT_PLANE
+from neuraljoints.ui.wrappers.implicit_plane import IMPLICIT_PLANE
 
 
 class ImplicitWrapper(EntityWrapper):
