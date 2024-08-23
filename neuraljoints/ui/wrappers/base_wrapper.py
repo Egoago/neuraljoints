@@ -55,9 +55,6 @@ class ListWrapper(EntityWrapper):
     def remove_wrapper(self, wrapper: EntityWrapper) -> bool:
         if wrapper is not None and wrapper in self.child_wrappers:
             self.object.remove(wrapper.object)
-            wrapper.object.unlink()
-            for child_wrapper in self.child_wrappers:
-                child_wrapper.unlink()
             self.child_wrappers = self.object.foreach(get_wrapper, **self.kwargs)
             self.changed = True
             return True
@@ -97,8 +94,6 @@ class ListWrapper(EntityWrapper):
                                 if imgui.Button(choice.__name__):
                                     new_entity = choice()
                                     object.add(new_entity)
-                                    for child_wrapper in self.child_wrappers:
-                                        child_wrapper.unlink()
                                     self.child_wrappers = object.foreach(get_wrapper, **self.kwargs)
                                     imgui.CloseCurrentPopup()
                             imgui.EndTabItem()
@@ -141,8 +136,6 @@ class ProxyWrapper(EntityWrapper):
 
     def empty(self) -> bool:
         if self.child_wrapper is not None:
-            self.child_wrapper.unlink()
-            self.child_wrapper.object.child.unlink()
             self.child_wrapper = None
             self.object.child = None
             self.changed = True

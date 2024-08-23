@@ -20,3 +20,12 @@ def gaussian_curvature(hess, grad):
     determinants = torch.linalg.det(mat)
     norm_4 = grad.norm(dim=-1) ** 2
     return (-1. / norm_4 + 1e-12) * determinants
+
+
+def mean_curvature(hess, grad):
+    hess, grad = hess.double(), grad.double()
+    grad_norm = grad.norm(dim=-1)
+    dividend = torch.einsum('...i,...i->...', grad, torch.einsum('...ij,...j->...i', hess, grad))
+    trace = torch.einsum('...ii->...', hess)
+    dividend = dividend - grad_norm ** 2 * trace
+    return dividend / (2 * grad_norm ** 3)

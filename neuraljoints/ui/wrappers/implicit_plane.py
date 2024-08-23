@@ -8,7 +8,7 @@ from polyscope import imgui
 
 from neuraljoints.geometry.base import Entity
 from neuraljoints.geometry.implicit import Implicit
-from neuraljoints.neural.autograd import gradient, gaussian_curvature, hessian
+from neuraljoints.neural.autograd import gradient, gaussian_curvature, hessian, mean_curvature
 from neuraljoints.ui.io import IOListener
 from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper
 from neuraljoints.ui.wrappers.colorbar import ColorBar
@@ -27,7 +27,7 @@ class ImplicitPlane(EntityWrapper, IOListener):
         self.surface = BoolParameter('surface', False)
         self.smooth = BoolParameter('smooth', False)
         self.isosurface = FloatParameter('isosurface', 0, -1, 1)
-        self.render = ChoiceParameter('render', 'plain', ['plain', 'normal', 'gaussian curvature', 'depth', 'position'])
+        self.render = ChoiceParameter('render', 'plain', ['plain', 'normal', 'gaussian curvature', 'mean curvature', 'depth', 'position'])
         self._mesh = None
         self._points = None
         self._grid = None
@@ -174,6 +174,8 @@ class ImplicitPlane(EntityWrapper, IOListener):
             position = torch.stack([X, Y, Z], dim=-1)
 
             values = surface_implicit(position)
+            if not values.is_contiguous():
+                values = values.contiguous()
 
             vertices, faces = cumcubes.marching_cubes(values, self.isosurface.value)
             vertices = vertices / res * 2 * bounds - bounds + bounds / res
@@ -181,15 +183,18 @@ class ImplicitPlane(EntityWrapper, IOListener):
         sm = ps.register_surface_mesh(implicit.name, vertices.cpu().numpy(), faces.cpu().numpy(),
                                       smooth_shade=self.smooth.value)
 
-        if self.gradient.value or self.render.value in ['normal', 'gaussian curvature']:
+        if self.gradient.value or self.render.value in ['normal', 'gaussian curvature', 'mean curvature']:
             vertices.requires_grad = True
-        if self.gradient.value or self.render.value in ['normal', 'plain', 'gaussian curvature']:
+        if self.gradient.value or self.render.value in ['normal', 'plain', 'gaussian curvature', 'mean curvature']:
             values = implicit(vertices)
-        if self.gradient.value or self.render.value in ['normal', 'gaussian curvature']:
-            gradients = gradient(values, vertices)
+        if self.gradient.value or self.render.value in ['normal', 'gaussian curvature', 'mean curvature']:
+            gradients = gradient(values.double(), vertices)
         if self.render.value == 'gaussian curvature':
             hess = hessian(gradients, vertices)
-            g_curv = gaussian_curvature(hess, gradients)
+            g_curv = gaussian_curvature(hess, gradients).float()
+        if self.render.value == 'mean curvature':
+            hess = hessian(gradients, vertices)
+            m_curv = mean_curvature(hess, gradients).float()
 
         with torch.no_grad():
             if self.render.value == 'plain':
@@ -203,12 +208,14 @@ class ImplicitPlane(EntityWrapper, IOListener):
                 depth = torch.linalg.norm(vertices-position[None, :], dim=-1)
                 sm.add_scalar_quantity('depth', depth.detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'normal':
-                sm.add_color_quantity('Normals', ((gradients + 1.)/2.).detach().cpu().numpy(), enabled=True)
+                sm.add_color_quantity('Normals', ((gradients.float() + 1.)/2.).detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'gaussian curvature':
                 sm.add_scalar_quantity('gaussian curvature', g_curv.detach().cpu().numpy(), enabled=True, cmap='viridis')
+            elif self.render.value == 'mean curvature':
+                sm.add_scalar_quantity('mean curvature', m_curv.detach().cpu().numpy(), enabled=True, cmap='viridis')
 
             if self.gradient.value:
-                sm.add_vector_quantity('Normal Vectors', (gradients * 0.1).detach().cpu().numpy(),
+                sm.add_vector_quantity('Normal Vectors', (gradients.float() * 0.1).detach().cpu().numpy(),
                                        vectortype='ambient', defined_on='vertices',
                                        radius=0.01, color=(0.1, 0.1, 0.1), enabled=True)
 
@@ -292,13 +299,17 @@ class ImplicitPlane(EntityWrapper, IOListener):
                 gradients = gradient(distance, points).detach().cpu().numpy()
                 gradients = (gradients + 1.)/2.
                 pc.add_color_quantity('gradients', gradients, enabled=True)
-            elif self.render.value == 'gaussian curvature':
+            elif self.render.value in ['gaussian curvature', 'mean curvature']:
                 points.requires_grad = True
                 distance = implicit(points)
                 grad = gradient(distance, points)
                 hess = hessian(grad, points)
-                g_curv = gaussian_curvature(hess, grad).detach().cpu().numpy()
-                pc.add_scalar_quantity('gaussian curvature', g_curv, enabled=True, cmap='viridis')
+                if self.render.value == 'gaussian curvature':
+                    g_curv = gaussian_curvature(hess, grad).detach().cpu().numpy()
+                    pc.add_scalar_quantity('gaussian curvature', g_curv, enabled=True, cmap='viridis')
+                else:
+                    m_curv = mean_curvature(hess, grad).detach().cpu().numpy()
+                    pc.add_scalar_quantity('mean curvature', m_curv, enabled=True, cmap='viridis')
 
     def on_mouse_hover(self, screen_coords):
         if self.selected is not None:

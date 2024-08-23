@@ -70,22 +70,23 @@ class ImplicitProxy(Proxy, Implicit):
         self.transform = None
 
 
-class Inverse(ImplicitProxy):
-    def forward(self, position):
-        if self.child is not None:
-            return -self.child(position)
-        return torch.zeros_like(position[..., 0])
-
-
-class Offset(ImplicitProxy):
+class TransformedImplicit(ImplicitProxy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.scale = FloatParameter('scale', 1., -2., 2.)
         self.offset = FloatParameter('offset', 0., -1., 1.)
 
     def forward(self, position):
         if self.child is not None:
-            return self.child(position) - self.offset.value
+            return self.scale.value * self.child(position) - self.offset.value
         return torch.zeros_like(position[..., 0])
+
+
+class Inverse(TransformedImplicit):
+    def __init__(self):
+        super().__init__()
+        self.scale = -1
+        self.offset = 0
 
 
 class SdfToUdf(ImplicitProxy):
