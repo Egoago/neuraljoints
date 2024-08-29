@@ -8,11 +8,12 @@ from neuraljoints.ui.wrappers.base_wrapper import EntityWrapper
 
 
 class ColorBar(EntityWrapper):
-    def __init__(self, z, bounds):
+    def __init__(self, z, bounds, offset=0.05):
         super().__init__(object=Entity(name='Color Bar'))
         self.font = ImageFont.truetype("media/IBMPlexMono-Regular.ttf", size=40., encoding="unic")
         self.max = None
         self.min = None
+        self.offset = offset
         self.z = z
         self.bounds = bounds
         self.cmap = None
@@ -43,10 +44,10 @@ class ColorBar(EntityWrapper):
     def mesh(self) -> ps.SurfaceMesh:
         if self._mesh is None:
             z = self.z.value
-            vertices = np.array([[1.05, 1, z],
-                                 [1.15, 1, z],
-                                 [1.15, -1, z],
-                                 [1.05, -1, z]]) * self.bounds.value.numpy()
+            vertices = np.array([[1.0 + self.offset, 1, z],
+                                 [1.1 + self.offset, 1, z],
+                                 [1.1 + self.offset, -1, z],
+                                 [1.0 + self.offset, -1, z]]) * self.bounds.value.numpy()
 
             faces = np.arange(4).reshape((1, 4))
             uv = np.array([[0, 1],
@@ -63,7 +64,7 @@ class ColorBar(EntityWrapper):
         if len(values) == 0:
             self.min = None
             self.max = None
-        elif refresh:
+        elif refresh or self.max is None:
             self.max = values.max().item()
             self.min = values.min().item()
         else:
@@ -95,7 +96,7 @@ class ColorBar(EntityWrapper):
             self.render_text(f"< {self.min:.3f}", 'min')
             self.render_text(f"< {self.max:.3f}", 'max')
             if self.highlighted is not None:
-                height = (self.highlighted-self.min) / (self.max - self.min) * 2 - 1
+                height = (self.highlighted-self.min) / (self.max - self.min + 1e-7) * 2 - 1
                 self.render_text(f"< {self.highlighted:.3f}", 'highlighted', height)
             else:
                 ps.remove_surface_mesh(f"highlighted mesh", False)

@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 import torch
 
 from neuraljoints.geometry.base import List
-from neuraljoints.neural.autograd import gaussian_curvature
+from neuraljoints.neural.autograd import gaussian_curvature, mean_curvature
 from neuraljoints.neural.sampling import Pipeline
 from neuraljoints.utils.parameters import FloatParameter, ChoiceParameter
 
@@ -11,7 +11,8 @@ from neuraljoints.utils.parameters import FloatParameter, ChoiceParameter
 class Loss(Pipeline):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.defined_on = ChoiceParameter('defined on', 'all', ['all', 'surface', 'volume', 'none'])
+        self.defined_on = ChoiceParameter(name='defined on', initial='all', choices=['all', 'surface', 'volume', 'none'])
+        self.norm = ChoiceParameter(name='norm', initial='mean', choices=['mean', 'abs', 'squared'])
 
     @property
     def enabled(self):
@@ -22,7 +23,12 @@ class Loss(Pipeline):
         return super().attributes | {'x'}
 
     def __call__(self, **kwargs):
-        return self.energy(**kwargs).mean()
+        energy = self.energy(**kwargs)
+        if self.norm.value == 'abs':
+            energy = energy.abs()
+        elif self.norm.value == 'squared':
+            energy = energy.square()
+        return energy.mean()
 
     def energy(self, **kwargs):
         self.check_input(**kwargs)
@@ -46,7 +52,7 @@ class Loss(Pipeline):
 class WeightedLoss(Loss, ABC):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.weight = FloatParameter('weight', 1, 0, 1)
+        self.weight = FloatParameter(name='weight', initial=1, min=0, max=1)
 
     def __call__(self, **kwargs):
         return Loss.__call__(self, **kwargs) * (self.weight.value * 1000)
@@ -86,23 +92,33 @@ class CompositeLoss(Loss, List):
         return sum
 
 
-class Mse(WeightedLoss):
+class Difference(WeightedLoss):
     @property
     def attributes(self) -> set[str]:
         return super().attributes | {'y_pred', 'y_gt'}
 
     def _energy(self, y_gt, y_pred, **kwargs):
-        return (y_gt - y_pred) ** 2
+        return y_gt - y_pred
+
+
+class Mse(Difference):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.norm.reset(initial='squared')
 
 
 class Eikonal(WeightedLoss):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.norm.reset(initial='abs')
+
     @property
     def attributes(self) -> set[str]:
         return super().attributes | {'grad_pred'}
 
     def _energy(self, grad_pred, **kwargs):
         grad_norm = torch.linalg.norm(grad_pred, axis=-1)
-        return (grad_norm - 1).abs()
+        return grad_norm - 1
 
 
 class EikonalRelaxed(WeightedLoss):
@@ -175,8 +191,20 @@ class GaussianCurvature(WeightedLoss):
         return super().attributes | {'hess_pred', 'grad_pred'}
 
     def _energy(self, hess_pred, grad_pred, **kwargs):
-        curvature = gaussian_curvature(hess_pred, grad_pred)
-        return curvature
+        return gaussian_curvature(hess_pred, grad_pred)
+
+
+class MeanCurvature(WeightedLoss):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.defined_on.reset(initial='surface')
+
+    @property
+    def attributes(self) -> set[str]:
+        return super().attributes | {'hess_pred', 'grad_pred'}
+
+    def _energy(self, hess_pred, grad_pred, **kwargs):
+        return mean_curvature(hess_pred, grad_pred)
 
 
 class DoubleThrough(GaussianCurvature):

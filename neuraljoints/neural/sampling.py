@@ -32,8 +32,8 @@ class Pipeline(Entity):
 class Sampler(Pipeline):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.batch_size = IntParameter('batch_size', 8192 * 2, 256, 8192 * 2)
-        self.bounds = Float3Parameter('bounds', value=[2.1, 2.1, 2.1], min=0, max=4)
+        self.batch_size = IntParameter(name='batch_size', initial=8192 * 2, min=256, max=8192 * 2)
+        self.bounds = Float3Parameter(name='bounds', initial=[2.1, 2.1, 2.1], min=0, max=4)
         self.surface_indices = torch.tensor([], dtype=torch.int, device=self.device)
 
     @torch.no_grad()
@@ -68,8 +68,8 @@ class Sampler(Pipeline):
 class HierarchicalSampler(Sampler):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.surface_ratio = FloatParameter('surface ratio', 0.7, 0., 1.)
-        self.noise_var = FloatParameter('noise var', 0.05, 0., 0.2)
+        self.surface_ratio = FloatParameter(name='surface ratio', initial=0.7, min=0., max=1.)
+        self.noise_var = FloatParameter(name='noise var', initial=0.05, min=0., max=0.2)
         self.prev_y, self.prev_x = None, None
 
     def _sample(self):

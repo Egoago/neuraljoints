@@ -29,7 +29,7 @@ class SDF(Implicit, ABC):
 class Sphere(SDF):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.radius = FloatParameter('radius', 1., 1e-5, 2.)
+        self.radius = FloatParameter(name='radius', initial=1., min=1e-5, max=2.)
 
     def forward(self, position):
         return torch.linalg.norm(position, dim=-1) - self.radius.value
@@ -38,7 +38,7 @@ class Sphere(SDF):
 class Cube(SDF):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.size = FloatParameter('size', 2., 1e-5, 4.)
+        self.size = FloatParameter(name='size', initial=2., min=1e-5, max=4.)
 
     def forward(self, position):
         d = abs(position) - self.size.value/2.
@@ -49,7 +49,7 @@ class Cube(SDF):
 class Cylinder(SDF):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.radius = FloatParameter('radius', 1., 1e-5, 2.)
+        self.radius = FloatParameter(name='radius', initial=1., min=1e-5, max=2.)
 
     def forward(self, position):
         position[..., 1] = 0
@@ -73,8 +73,8 @@ class ImplicitProxy(Proxy, Implicit):
 class TransformedImplicit(ImplicitProxy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.scale = FloatParameter('scale', 1., -2., 2.)
-        self.offset = FloatParameter('offset', 0., -1., 1.)
+        self.scale = FloatParameter(name='scale', initial=1., min=-2., max=2.)
+        self.offset = FloatParameter(name='offset', initial=0., min=-1., max=1.)
 
     def forward(self, position):
         if self.child is not None:
@@ -85,8 +85,8 @@ class TransformedImplicit(ImplicitProxy):
 class Inverse(TransformedImplicit):
     def __init__(self):
         super().__init__()
-        self.scale = -1
-        self.offset = 0
+        self.scale.value = -1
+        self.offset.value = 0
 
 
 class SdfToUdf(ImplicitProxy):

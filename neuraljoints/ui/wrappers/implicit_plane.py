@@ -20,19 +20,20 @@ class ImplicitPlane(EntityWrapper, IOListener):
 
     def __init__(self, **kwargs):
         super().__init__(object=Entity(name='Grid'), **kwargs)
-        self.resolution = IntParameter('resolution', 100, 2, 200)
-        self.bounds = Float3Parameter('bounds', [2, 2, 2], 1, 10)
-        self.z = FloatParameter('z', 0, -1, 1)
-        self.gradient = BoolParameter('gradient', False)
-        self.surface = BoolParameter('surface', False)
-        self.smooth = BoolParameter('smooth', False)
-        self.isosurface = FloatParameter('isosurface', 0, -1, 1)
-        self.render = ChoiceParameter('render', 'plain', ['plain', 'normal', 'gaussian curvature', 'mean curvature', 'depth', 'position'])
+        self.resolution = IntParameter(name='resolution', initial=100, min=2, max=500)
+        self.bounds = Float3Parameter(name='bounds', initial=[2, 2, 2], min=1, max=10)
+        self.z = FloatParameter(name='z', initial=0)
+        self.gradient = BoolParameter(name='gradient', initial=False)
+        self.surface = BoolParameter(name='surface', initial=False)
+        self.smooth = BoolParameter(name='smooth', initial=False)
+        self.isosurface = FloatParameter(name='isosurface', initial=0)
+        self.render = ChoiceParameter(name='render', initial='plain', choices=['plain', 'normal', 'gaussian curvature', 'mean curvature', 'depth', 'position'])
         self._mesh = None
         self._points = None
         self._grid = None
         self.selected = None
-        self.color_bar = ColorBar(z=self.z, bounds=self.bounds)
+        self.texture_color_bar = ColorBar(z=self.z, bounds=self.bounds)
+        self.surface_color_bar = ColorBar(z=self.z, bounds=self.bounds, offset=0.2)
 
     @torch.no_grad()
     def add_scalar_texture(self, name: str, implicit: Implicit = None,
@@ -46,7 +47,7 @@ class ImplicitPlane(EntityWrapper, IOListener):
         values = values.reshape(self.resolution.value, self.resolution.value)
         if isinstance(values, torch.Tensor):
             values = values.cpu().numpy()
-        self.color_bar.update(values, scalar_args)
+        self.texture_color_bar.update(values, scalar_args)
         self.mesh.add_scalar_quantity(name, values, defined_on='texture', param_name="uv",
                                       enabled=True, **scalar_args)
 
@@ -123,7 +124,8 @@ class ImplicitPlane(EntityWrapper, IOListener):
         self._mesh = None
         self._points = None
         self._grid = None
-        self.color_bar.reset()
+        self.texture_color_bar.reset()
+        self.surface_color_bar.reset()
 
     def draw_ui(self):
         super().draw_ui()
@@ -157,7 +159,8 @@ class ImplicitPlane(EntityWrapper, IOListener):
             else:
                 ps.remove_surface_mesh(implicit.name, False)
             self.add_scalar_texture(implicit.name, values=values, scalar_args=self.selected.scalar_args)
-            self.color_bar.draw_geometry()
+            self.texture_color_bar.draw_geometry()
+            #self.surface_color_bar.draw_geometry() TODO
 
     def add_surface(self, implicit: Implicit, surface_implicit: Implicit = None, scalar_args=None):
         if scalar_args is None:
@@ -199,6 +202,8 @@ class ImplicitPlane(EntityWrapper, IOListener):
         with torch.no_grad():
             if self.render.value == 'plain':
                 sm.add_scalar_quantity('values', values.detach().cpu().numpy(), enabled=True, **scalar_args)
+                self.surface_color_bar.reset()
+                self.texture_color_bar.update(values, scalar_args, refresh=False)
             elif self.render.value == 'position':
                 positions = (vertices/bounds[None, :] + 1.) / 2.
                 sm.add_color_quantity('position', positions.detach().cpu().numpy(), enabled=True)
@@ -207,12 +212,15 @@ class ImplicitPlane(EntityWrapper, IOListener):
                 position = torch.tensor(position, device=vertices.device)
                 depth = torch.linalg.norm(vertices-position[None, :], dim=-1)
                 sm.add_scalar_quantity('depth', depth.detach().cpu().numpy(), enabled=True)
+                self.texture_color_bar.update(depth, scalar_args)
             elif self.render.value == 'normal':
                 sm.add_color_quantity('Normals', ((gradients.float() + 1.)/2.).detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'gaussian curvature':
                 sm.add_scalar_quantity('gaussian curvature', g_curv.detach().cpu().numpy(), enabled=True, cmap='viridis')
+                self.texture_color_bar.update(g_curv, scalar_args)
             elif self.render.value == 'mean curvature':
                 sm.add_scalar_quantity('mean curvature', m_curv.detach().cpu().numpy(), enabled=True, cmap='viridis')
+                self.texture_color_bar.update(m_curv, scalar_args)
 
             if self.gradient.value:
                 sm.add_vector_quantity('Normal Vectors', (gradients.float() * 0.1).detach().cpu().numpy(),
@@ -287,12 +295,15 @@ class ImplicitPlane(EntityWrapper, IOListener):
             if self.render.value == 'plain':
                 values = implicit(points)
                 pc.add_scalar_quantity('values', values.detach().cpu().numpy(), enabled=True, **self.selected.scalar_args)
+                self.texture_color_bar.reset()
+                self.surface_color_bar.update(values, self.selected.scalar_args, refresh=False)
             elif self.render.value == 'position':
                 positions = (points/bounds[None, :] + 1.) / 2.
                 pc.add_color_quantity('position', positions.detach().cpu().numpy(), enabled=True)
             elif self.render.value == 'depth':
                 depth = torch.linalg.norm(points-origo[None, :], dim=-1)
                 pc.add_scalar_quantity('depth', depth.detach().cpu().numpy(), enabled=True)
+                self.texture_color_bar.update(depth, {'cmap': 'greys'})
             elif self.render.value == 'normal':
                 points.requires_grad = True
                 distance = implicit(points)
@@ -307,9 +318,11 @@ class ImplicitPlane(EntityWrapper, IOListener):
                 if self.render.value == 'gaussian curvature':
                     g_curv = gaussian_curvature(hess, grad).detach().cpu().numpy()
                     pc.add_scalar_quantity('gaussian curvature', g_curv, enabled=True, cmap='viridis')
+                    #self.texture_color_bar.update(g_curv, {'cmap': 'viridis'}) TODO
                 else:
                     m_curv = mean_curvature(hess, grad).detach().cpu().numpy()
                     pc.add_scalar_quantity('mean curvature', m_curv, enabled=True, cmap='viridis')
+                    #self.texture_color_bar.update(m_curv, {'cmap': 'viridis'}) TODO
 
     def on_mouse_hover(self, screen_coords):
         if self.selected is not None:
@@ -318,10 +331,10 @@ class ImplicitPlane(EntityWrapper, IOListener):
             if torch.all(torch.tensor(x).abs() < self.bounds.value):
                 x = torch.tensor(x, device=implicit.device, dtype=torch.float32)
                 value = implicit(x)
-                self.color_bar.highlighted = value.item()
+                self.texture_color_bar.highlighted = value.item()
             else:
-                self.color_bar.highlighted = None
-            self.color_bar.draw_geometry()
+                self.texture_color_bar.highlighted = None
+            self.texture_color_bar.draw_geometry()
 
 
 IMPLICIT_PLANE = ImplicitPlane()  # easier than using singleton

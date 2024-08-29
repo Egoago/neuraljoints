@@ -62,7 +62,7 @@ class ParameterWrapper:
     def __draw(cls, param: params.FloatParameter) -> bool:
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderFloat('', param.value, format='%.5f',
-                                           v_min=param.min, v_max=param.max, power=param.power)
+                                           v_min=param.min, v_max=param.max)
         return cls.__draw_slider(param, value, changed)
 
     @classmethod
@@ -77,7 +77,7 @@ class ParameterWrapper:
     def __draw(cls, param: params.Float3Parameter) -> bool:
         imgui.SetNextItemWidth(200)
         changed, value = imgui.SliderFloat3('', param.value.tolist(),
-                                            v_min=param.min, v_max=param.max, power=param.power)
+                                            v_min=param.min, v_max=param.max)
         return cls.__draw_slider(param, value, changed)
 
     @classmethod

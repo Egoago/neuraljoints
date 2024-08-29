@@ -3,8 +3,8 @@ from abc import abstractmethod
 import torch
 
 from neuraljoints.geometry.base import List
-from neuraljoints.geometry.implicit import Implicit, TransformedImplicit, ImplicitProxy
-from neuraljoints.utils.parameters import FloatParameter
+from neuraljoints.geometry.implicit import Implicit, TransformedImplicit
+from neuraljoints.utils.parameters import FloatParameter, BoolParameter
 
 
 class Aggregate(List, Implicit):
@@ -41,11 +41,11 @@ class CleanUnion(Aggregate):
 
 class RUnion(Aggregate):
     def __init__(self, *args, **kwargs):
-        self.a0 = FloatParameter('a0', 1, min=0., max=100.)
+        self.a0 = FloatParameter(name='a0', initial=1, min=0., max=100.)
         super().__init__(*args, **kwargs)
         for i in range(len(self.children)):
             name = f'a{i+1}'
-            setattr(self, name, FloatParameter(name, 1, min=0., max=20.))
+            setattr(self, name, FloatParameter(name=name, initial=1, min=0., max=20.))
 
     def reduce(self, values: [torch.Tensor]):
         values = torch.stack(values, dim=-1)
@@ -56,7 +56,7 @@ class RUnion(Aggregate):
 
 class RoundUnion(Union):
     def __init__(self, radius=1.0, *args, **kwargs):
-        self.radius = FloatParameter('radius', radius, min=0., max=2.)
+        self.radius = FloatParameter(name='radius', initial=radius, min=0., max=2.)
         super().__init__(*args, **kwargs)
 
     def reduce(self, values: [torch.Tensor]):
@@ -92,8 +92,9 @@ class SuperElliptic(Aggregate):
 class IPatchManual(Aggregate):
     def __init__(self, *args, **kwargs):
         self.boundaries = Union(name='boundaries')
-        self.w0 = FloatParameter('w0', 1, min=-1., max=10.)
-        self.exp = FloatParameter('exp', 2., min=0., max=10.)
+        self.w0 = FloatParameter(name='w0', initial=1, min=-1., max=10.)
+        self.filter = BoolParameter(name='filter', initial=True)
+        self.exp = FloatParameter(name='exp', initial=2., min=0., max=10.)
         super().__init__(*args, children=[self.boundaries], **kwargs)
 
     @property
@@ -110,8 +111,9 @@ class IPatchManual(Aggregate):
     def reduce(self, values: [torch.Tensor]):
         implicits, boundaries = values
         blended = self.blend(implicits, boundaries)
-
-        return torch.where((boundaries > 0).all(dim=0), blended, implicits.min(dim=0).values)
+        if self.filter:
+            return torch.where((boundaries > 0).all(dim=0), blended, implicits.min(dim=0).values)
+        return blended
 
     def blend(self, implicits, boundaries):
         boundaries = boundaries ** self.exp.value
@@ -127,7 +129,7 @@ class IPatchManual(Aggregate):
 class IPatch(IPatchManual):
     def __init__(self, *args, children: list[Implicit]=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.offset = FloatParameter('offset', -0.5, min=-1, max=0.)
+        self.offset = FloatParameter(name='offset', initial=-0.5, min=-1, max=0.)
         if children is not None:
             for child in children:
                 self.add(child)
@@ -195,10 +197,10 @@ class IPatchHierarchical(Aggregate):
             return dividend / divisor
 
     def __init__(self, *args, children: list[Implicit]=None, **kwargs):
-        self.w0 = FloatParameter('w0', 1, min=-1., max=10.)
-        self.exp = FloatParameter('exp', 2., min=0., max=10.)
+        self.w0 = FloatParameter(name='w0', initial=1, min=-1., max=10.)
+        self.exp = FloatParameter(name='exp', initial=2., min=0., max=10.)
         self.tree = None
-        self.offset = FloatParameter('offset', -0.5, min=-1, max=0.)
+        self.offset = FloatParameter(name='offset', initial=-0.5, min=-1, max=0.)
         super().__init__(*args, children=children, **kwargs)
 
     def add(self, child):
@@ -224,3 +226,9 @@ class IPatchHierarchical(Aggregate):
             for implicit in self.children[1:]:
                 self.tree = self.IPatchPair(implicit_a=self.tree, implicit_b=implicit,
                                             offset=self.offset, exp=self.exp, w0=self.w0)
+
+
+class Productum(IPatch):
+    def blend(self, implicits, boundaries):
+        boundaries = boundaries ** self.exp.value
+        return boundaries.prod(dim=0)

@@ -13,10 +13,10 @@ class Network(Implicit, torch.nn.Module):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.embedding = NoEmbedding()  # TODO
-        self.n_neurons = IntParameter('n_neurons', 128, 2, 512)
-        self.n_layers = IntParameter('n_layers', 1, 0, 8)
-        self.layer = ChoiceParameter('architecture', Siren.__name__, list(Layer.subclass_names))
-        self.init_scheme = ChoiceParameter('init', Siren.init_schemes[0], ReLU.init_schemes)
+        self.n_neurons = IntParameter(name='n_neurons', initial=128, min=2, max=512)
+        self.n_layers = IntParameter(name='n_layers', initial=1, min=0, max=8)
+        self.layer = ChoiceParameter(name='architecture', initial=Siren.__name__, choices=list(Layer.subclass_names))
+        self.init_scheme = ChoiceParameter(name='init', initial=Siren.init_schemes[0], choices=ReLU.init_schemes)
         self.mlp = self.build()
         self.layers = []
 
@@ -133,7 +133,7 @@ class Squared(LinearLayer):
 
 
 class SoftPlus(LinearLayer):
-    BETA = FloatParameter('beta', 5., 1e-5, 10.)
+    BETA = FloatParameter(name='beta', initial=5., min=1e-5, max=10.)
 
     def __init__(self, in_dim, out_dim, **kwargs):
         kwargs['activation'] = torch.nn.Softplus(self.BETA.value)
@@ -141,14 +141,14 @@ class SoftPlus(LinearLayer):
 
 
 class Sine(torch.nn.Module):
-    W0 = FloatParameter('frequency', 30., 1., 30.)
+    W0 = FloatParameter(name='frequency', initial=30., min=1., max=30.)
 
     def forward(self, x):
         return torch.sin(Sine.W0.value * x)
 
 
 class Siren(LinearLayer):
-    MFGI_RADIUS = FloatParameter('mfgi radius', 1., 1e-3, 4.)
+    MFGI_RADIUS = FloatParameter(name='mfgi radius', initial=1., min=1e-3, max=4.)
     C = 6.
 
     def __init__(self, in_dim, out_dim, **kwargs):

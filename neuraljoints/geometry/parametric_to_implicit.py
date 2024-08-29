@@ -9,7 +9,7 @@ class ParametricToImplicitBrute(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
         super().__init__(**kwargs)
         self.parametric = parametric
-        self.resolution = IntParameter('resolution', value=100, min=3, max=200)
+        self.resolution = IntParameter('resolution', initial=100, min=3, max=200)
 
     def forward(self, position):
         parameters = torch.linspace(0., 1., self.resolution.value,
@@ -22,7 +22,7 @@ class ParametricToImplicitGWN(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
         super().__init__(**kwargs)
         self.parametric = parametric
-        self.resolution = IntParameter('resolution', value=10, min=3, max=200)
+        self.resolution = IntParameter('resolution', initial=10, min=3, max=200)
 
     def forward(self, position):
         parameters = torch.linspace(0., 1., self.resolution.value,
@@ -43,10 +43,10 @@ class ParametricToImplicitNewton(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
         super().__init__(**kwargs)
         self.parametric = parametric
-        self.iterations = IntParameter('iterations', value=3, min=0, max=300)
-        self.resolution = IntParameter('resolution', value=100, min=2, max=40)
-        # self.distance_tol = FloatParameter('distance tolerance', value=0, min=0, max=0.1)
-        # self.cosine_tol = FloatParameter('cosine tolerance', value=0, min=0, max=1)
+        self.iterations = IntParameter('iterations', initial=3, min=0, max=300)
+        self.resolution = IntParameter('resolution', initial=100, min=2, max=40)
+        # self.distance_tol = FloatParameter('distance tolerance', initial=0, min=0, max=0.1)
+        # self.cosine_tol = FloatParameter('cosine tolerance', initial=0, min=0, max=1)
 
     def forward(self, p):
         def dot(a, b):
@@ -86,8 +86,8 @@ class ParametricToImplicitBinary(ImplicitProxy):
     def __init__(self, parametric: Parametric, **kwargs):
         super().__init__(**kwargs)
         self.parametric = parametric
-        self.iterations = IntParameter('iterations', value=5, min=0, max=100)
-        self.resolution = IntParameter('resolution', value=50, min=2, max=20)
+        self.iterations = IntParameter('iterations', initial=5, min=0, max=100)
+        self.resolution = IntParameter('resolution', initial=50, min=2, max=20)
 
     @staticmethod
     def dot(a, b=None):

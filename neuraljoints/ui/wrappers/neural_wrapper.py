@@ -53,7 +53,7 @@ class SamplerWrapper(EntityWrapper):
     def __init__(self, sampler: Sampler):
         super().__init__(object=sampler)
         self.grad = None
-        self.render_points = BoolParameter('render points', False)
+        self.render_points = BoolParameter(name='render points', initial=False)
 
     @property
     def sampler(self) -> Sampler:

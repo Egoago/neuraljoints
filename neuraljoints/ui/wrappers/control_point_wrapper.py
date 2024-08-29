@@ -16,7 +16,7 @@ class ControlPointsWrapper(IOListener, EntityWrapper):  # TODO fix torch <- nump
     def __init__(self, control_points: PointCloud, **kwargs):
         super().__init__(object=control_points, **kwargs)
         self.initial = np.copy(control_points.points)
-        self.entity.control_radius = FloatParameter('control point radius', value=0.04, min=0.03, max=0.1)
+        self.entity.control_radius = FloatParameter('control point radius', initial=0.04, min=0.03, max=0.1)
         self.selected = None
         self.moved = False
         ControlPointsWrapper.INSTANCES.append(self)

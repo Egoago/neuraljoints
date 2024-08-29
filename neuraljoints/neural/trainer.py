@@ -1,3 +1,6 @@
+import logging
+import warnings
+
 import torch
 
 from neuraljoints.geometry.base import Entity
@@ -14,8 +17,8 @@ class Trainer(Entity):
     def __init__(self, model: Network, implicit: Implicit, **kwargs):
         implicit.name = 'Target'
         super().__init__(**kwargs)
-        self.max_steps = IntParameter('max_steps', 10000, 1, 10000)
-        self.lr = FloatParameter('lr', 1e-4, 1e-7, 0.1)
+        self.max_steps = IntParameter(name='max_steps', initial=10000, min=1, max=10000)
+        self.lr = FloatParameter(name='lr', initial=1e-4, min=1e-7, max=0.1)
 
         self.model = model.to(self.device)
         self.sampler = PullSampler()
@@ -75,6 +78,10 @@ class Trainer(Entity):
             self.optimizer.zero_grad()
 
             outputs = self.step()
+
+            if torch.isnan(outputs['loss']).sum() > 0:
+                print('NaN loss detected')
+                self.stop()
 
             outputs['loss'].backward()
             self.optimizer.step()
