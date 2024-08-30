@@ -40,6 +40,8 @@ class Loss(Pipeline):
                 if self.defined_on.value in ['volume', 'all']:
                     index = torch.ones(len(x), dtype=torch.bool, device=x.device)
                     index[kwargs['surface_indices']] = False
+                if index.sum() == 0:
+                    return torch.zeros_like(x[..., 0], requires_grad=x.requires_grad)
                 kwargs = {k: v[index] for k, v in kwargs.items() if k != 'surface_indices'}
             return self._energy(**kwargs)
         return torch.zeros_like(x[..., 0], requires_grad=x.requires_grad)

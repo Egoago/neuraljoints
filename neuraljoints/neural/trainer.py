@@ -1,6 +1,3 @@
-import logging
-import warnings
-
 import torch
 
 from neuraljoints.geometry.base import Entity
@@ -15,7 +12,8 @@ from neuraljoints.utils.parameters import IntParameter, FloatParameter
 
 class Trainer(Entity):
     def __init__(self, model: Network, implicit: Implicit, **kwargs):
-        implicit.name = 'Target'
+        if implicit is not None:
+            implicit.name = 'Target'
         super().__init__(**kwargs)
         self.max_steps = IntParameter(name='max_steps', initial=10000, min=1, max=10000)
         self.lr = FloatParameter(name='lr', initial=1e-4, min=1e-7, max=0.1)

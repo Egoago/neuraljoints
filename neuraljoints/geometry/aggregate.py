@@ -196,12 +196,14 @@ class IPatchHierarchical(Aggregate):
                 divisor += temp
             return dividend / divisor
 
-    def __init__(self, *args, children: list[Implicit]=None, **kwargs):
+    def __init__(self, *args, children: list[Implicit] = None, **kwargs):
         self.w0 = FloatParameter(name='w0', initial=1, min=-1., max=10.)
         self.exp = FloatParameter(name='exp', initial=2., min=0., max=10.)
         self.tree = None
         self.offset = FloatParameter(name='offset', initial=-0.5, min=-1, max=0.)
-        super().__init__(*args, children=children, **kwargs)
+        super().__init__(*args, children=[], **kwargs)
+        for child in children or []:
+            self.add(child)
 
     def add(self, child):
         self.children.append(child)

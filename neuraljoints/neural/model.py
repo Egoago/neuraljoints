@@ -16,7 +16,7 @@ class Network(Implicit, torch.nn.Module):
         self.n_neurons = IntParameter(name='n_neurons', initial=128, min=2, max=512)
         self.n_layers = IntParameter(name='n_layers', initial=1, min=0, max=8)
         self.layer = ChoiceParameter(name='architecture', initial=Siren.__name__, choices=list(Layer.subclass_names))
-        self.init_scheme = ChoiceParameter(name='init', initial=Siren.init_schemes[0], choices=ReLU.init_schemes)
+        self.init_scheme = ChoiceParameter(name='init', initial=Siren.init_schemes[0], choices=Siren.init_schemes)
         self.mlp = self.build()
         self.layers = []
 
