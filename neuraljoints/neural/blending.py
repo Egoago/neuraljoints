@@ -52,7 +52,6 @@ class OptimizedIPatch(IPatchHierarchical):
         super().__init__(**kwargs)
         self.w0_param: FloatParameter = self.w0     # switch parameters to tensors
         self.exp_param: FloatParameter = self.exp
-        self.exp_param.value = 2.001
         self.w0 = torch.tensor(self.w0_param.value, requires_grad=True)
         self.exp = torch.tensor(self.exp_param.value, requires_grad=True)
 
@@ -101,6 +100,107 @@ class OptimizedIPatch(IPatchHierarchical):
         return [self.w0, self.exp]
 
 
+class OptimizedIPatchPairProductum(IPatchPair):
+    def __init__(self, exp_offset, w0_offset, **kwargs):
+        super().__init__(**kwargs)
+        self.exp_offset = exp_offset
+        self.w0_offset = w0_offset
+
+    def blend(self, implicits, boundaries):
+        boundaries = boundaries.abs() ** 2
+        b_prod = boundaries.prod(dim=0)
+        exp = b_prod * self.exp + self.exp_offset
+        w0 = b_prod * self.w0 + self.w0_offset
+
+        boundaries = boundaries ** exp
+        dividend, divisor = -w0 * b_prod, 0
+        for i in range(len(implicits)):
+            temp = b_prod / boundaries[i]
+            dividend += temp * implicits[i]
+            divisor += temp
+        return dividend / divisor
+
+
+class OptimizedIPatchProductum(IPatchHierarchical):
+    def __init__(self, **kwargs):
+        self.w0_offset_param = FloatParameter(name='w0 offset', initial=1., min=-1., max=10.)
+        self.exp_offset_param = FloatParameter(name='exp offset', initial=1., min=0., max=10.)
+        self.w0_offset = torch.tensor(self.w0_offset_param.value, requires_grad=True)
+        self.exp_offset = torch.tensor(self.exp_offset_param.value, requires_grad=True)
+        super().__init__(**kwargs)
+        self.w0_param: FloatParameter = self.w0  # switch parameters to tensors
+        self.exp_param: FloatParameter = self.exp
+        self.w0 = torch.tensor(self.w0_param.value, requires_grad=True)
+        self.exp = torch.tensor(self.exp_param.value, requires_grad=True)
+        self.w0_param.reset(initial=1e-6)
+        self.exp_param.reset(initial=1e-6)
+        self.w0_param.min = -10.
+        self.exp_param.min = -10.
+        self.build_tree()
+
+    def to(self, device):
+        self.w0 = torch.tensor(self.w0_param.value, requires_grad=True, device=device)
+        self.exp = torch.tensor(self.exp_param.value, requires_grad=True, device=device)
+        self.w0_offset = torch.tensor(self.w0_offset_param.value, requires_grad=True, device=device)
+        self.exp_offset = torch.tensor(self.exp_offset_param.value, requires_grad=True, device=device)
+
+        self.build_tree()
+        return self
+
+    def update(self, training):
+        if training:
+            self.w0_param.value = self.w0.item()
+            self.exp_param.value = self.exp.item()
+            self.w0_offset_param.value = self.w0_offset.item()
+            self.exp_offset_param.value = self.exp_offset.item()
+            self.w0_param.changed = True
+            self.exp_param.changed = True
+            self.w0_offset_param.changed = True
+            self.exp_offset_param.changed = True
+        else:
+            if self.w0.item() != self.w0_param.value:
+                self.w0 = torch.tensor(self.w0_param.value)
+                self.w0_param.changed = True
+            if self.exp.item() != self.exp_param.value:
+                self.exp = torch.tensor(self.exp_param.value)
+                self.exp_param.changed = True
+            if self.w0_offset.item() != self.w0_offset_param.value:
+                self.w0 = torch.tensor(self.w0_offset_param.value)
+                self.w0_offset_param.changed = True
+            if self.exp_offset.item() != self.exp_offset_param.value:
+                self.exp_offset = torch.tensor(self.exp_offset_param.value)
+                self.exp_offset_param.changed = True
+            if self.w0_param.changed or self.exp_param.changed or self.w0_offset_param.changed or self.exp_offset_param.changed:
+                self.build_tree()
+
+    def build(self):
+        self.w0_param.reset()
+        self.exp_param.reset()
+        self.w0_offset_param.reset()
+        self.exp_offset_param.reset()
+        self.w0_param.changed = True
+        self.exp_param.changed = True
+        self.w0_offset_param.changed = True
+        self.exp_offset_param.changed = True
+        self.w0 = torch.tensor(self.w0_param.value)
+        self.exp = torch.tensor(self.exp_param.value)
+        self.w0_offset = torch.tensor(self.w0_offset_param.value)
+        self.exp_offset = torch.tensor(self.exp_offset_param.value)
+        self.build_tree()
+
+    def build_tree(self):
+        self.tree = None
+        if len(self.children) > 0:
+            self.tree = self.children[0]
+            for implicit in self.children[1:]:
+                self.tree = OptimizedIPatchPairProductum(implicit_a=self.tree, implicit_b=implicit,
+                                                         offset=self.offset, exp=self.exp, w0=self.w0,
+                                                         exp_offset=self.exp_offset, w0_offset=self.w0_offset)
+
+    def parameters(self):
+        return [self.w0, self.exp, self.w0_offset, self.exp_offset]
+
+
 class IPatchTrainer(Trainer):
     def __init__(self, model: OptimizedIPatch, **kwargs):
         super().__init__(model=model, implicit=None, **kwargs)
@@ -128,10 +228,9 @@ class IPatchTrainer(Trainer):
 
     def update(self):
         super().update()
-        if torch.isnan(self.model.exp).sum() > 0:
-            print('NaN exp detected')
-            self.stop()
-        if torch.isnan(self.model.w0).sum() > 0:
-            print('NaN w0 detected')
-            self.stop()
+        if self.training:
+            for i, param in enumerate(self.model.parameters()):
+                if torch.isnan(param).sum() > 0:
+                    print(f'NaN parameter detected at {i}th index')
+                    self.stop()
         self.model.update(self.training)

@@ -1,8 +1,8 @@
 import polyscope as ps
 
 import neuraljoints.geometry.aggregate as aggregate
-from neuraljoints.geometry.implicit import Cube, Plane
-from neuraljoints.neural.blending import OptimizedIPatch, IPatchTrainer
+from neuraljoints.geometry.implicit import Plane
+from neuraljoints.neural import blending
 from neuraljoints.ui.ui import UIHandler
 
 
@@ -12,8 +12,8 @@ def main():
     p.transform.rotation.value = [0, 0, -90]
     implicits = [aggregate.Union(name='A', children=[p]),
                  aggregate.Union(name='B', children=[Plane()])]
-    model = OptimizedIPatch(children=implicits)
-    trainer = IPatchTrainer(model=model)
+    model = blending.OptimizedIPatchProductum(children=implicits)
+    trainer = blending.IPatchTrainer(model=model)
 
     UIHandler.add_entity(trainer)
     UIHandler.add_entity(model)
