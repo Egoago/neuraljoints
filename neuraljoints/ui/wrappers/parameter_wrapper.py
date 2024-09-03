@@ -7,7 +7,8 @@ class ParameterWrapper:
     @classmethod
     def draw(cls, param: params.Parameter) -> bool:
         imgui.PushId(param.id)
-        changed = cls.__draw(param)
+        changed = cls.__draw(param) or param.changed
+        param.changed = False
         imgui.PopID()
         return changed
 

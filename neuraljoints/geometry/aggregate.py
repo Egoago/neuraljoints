@@ -157,47 +157,47 @@ class IPatch(IPatchManual):
         self.boundaries.children = boundaries
 
 
+class IPatchPair(Aggregate):
+    def __init__(self, implicit_a, implicit_b, offset, exp, w0, **kwargs):
+        super().__init__(children=[implicit_a, implicit_b], **kwargs)
+        self.exp = exp
+        self.w0 = w0
+        self.offset = offset
+        self.boundaries = [self.get_boundary(implicit) for implicit in self.children[::-1]]
+
+    def get_boundary(self, implicit):
+        boundary = TransformedImplicit(child=implicit)
+        boundary.offset = self.offset
+        boundary.scale.value = -1.0
+        return boundary
+
+    def forward(self, position):
+        assert len(self.children) == 2
+        assert len(self.boundaries) == 2
+        implicits = torch.stack([i(position) for i in self.children])
+        boundaries = torch.stack([b(position) for b in self.boundaries])
+        return self.reduce([implicits, boundaries])
+
+    def reduce(self, values: [torch.Tensor]):
+        implicits, boundaries = values
+        blended = self.blend(implicits, boundaries)
+
+        return torch.where((boundaries > 0).all(dim=0), blended, implicits.min(dim=0).values)
+
+    def blend(self, implicits, boundaries):
+        boundaries = boundaries ** self.exp.value
+        b_prod = boundaries.prod(dim=0)
+        dividend, divisor = -self.w0.value * b_prod, 0
+        for i in range(len(implicits)):
+            temp = b_prod / boundaries[i]
+            dividend += temp * implicits[i]
+            divisor += temp
+        return dividend / divisor
+
+
 class IPatchHierarchical(Aggregate):
-    class IPatchPair(Aggregate):
-
-        def __init__(self, implicit_a, implicit_b, offset, exp, w0, **kwargs):
-            super().__init__(children=[implicit_a, implicit_b], **kwargs)
-            self.exp = exp
-            self.w0 = w0
-            self.offset = offset
-            self.boundaries = [self.get_boundary(implicit) for implicit in self.children[::-1]]
-
-        def get_boundary(self, implicit):
-            boundary = TransformedImplicit(child=implicit)
-            boundary.offset = self.offset
-            boundary.scale.value = -1.0
-            return boundary
-
-        def forward(self, position):
-            assert len(self.children) == 2
-            assert len(self.boundaries) == 2
-            implicits = torch.stack([i(position) for i in self.children])
-            boundaries = torch.stack([b(position) for b in self.boundaries])
-            return self.reduce([implicits, boundaries])
-
-        def reduce(self, values: [torch.Tensor]):
-            implicits, boundaries = values
-            blended = self.blend(implicits, boundaries)
-
-            return torch.where((boundaries > 0).all(dim=0), blended, implicits.min(dim=0).values)
-
-        def blend(self, implicits, boundaries):
-            boundaries = boundaries ** self.exp.value
-            b_prod = boundaries.prod(dim=0)
-            dividend, divisor = -self.w0.value * b_prod, 0
-            for i in range(len(implicits)):
-                temp = b_prod / boundaries[i]
-                dividend += temp * implicits[i]
-                divisor += temp
-            return dividend / divisor
-
     def __init__(self, *args, children: list[Implicit] = None, **kwargs):
-        self.w0 = FloatParameter(name='w0', initial=1, min=-1., max=10.)
+        self.w0 = FloatParameter(name='w0', initial=1., min=-1., max=10.)
         self.exp = FloatParameter(name='exp', initial=2., min=0., max=10.)
         self.tree = None
         self.offset = FloatParameter(name='offset', initial=-0.5, min=-1, max=0.)
@@ -226,8 +226,8 @@ class IPatchHierarchical(Aggregate):
         if len(self.children) > 0:
             self.tree = self.children[0]
             for implicit in self.children[1:]:
-                self.tree = self.IPatchPair(implicit_a=self.tree, implicit_b=implicit,
-                                            offset=self.offset, exp=self.exp, w0=self.w0)
+                self.tree = IPatchPair(implicit_a=self.tree, implicit_b=implicit,
+                                       offset=self.offset, exp=self.exp, w0=self.w0)
 
 
 class Productum(IPatch):

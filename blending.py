@@ -8,8 +8,9 @@ from neuraljoints.ui.ui import UIHandler
 
 def main():
     UIHandler.init()
-
-    implicits = [aggregate.Union(name='A', children=[Cube()]),
+    p = Plane()
+    p.transform.rotation.value = [0, 0, -90]
+    implicits = [aggregate.Union(name='A', children=[p]),
                  aggregate.Union(name='B', children=[Plane()])]
     model = OptimizedIPatch(children=implicits)
     trainer = IPatchTrainer(model=model)

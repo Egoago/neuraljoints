@@ -32,6 +32,8 @@ class Trainer(Entity):
     def train(self, step=0):
         self.training = True
         self.model = self.model.to(self.device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr.value)  # TODO remove redundancy
+        self.scheduler = LRScheduler(self.optimizer, self.lr)
         self.training_step = step
         if step == 0:
             self.losses = []
@@ -43,8 +45,6 @@ class Trainer(Entity):
         self.model.build()
         self.train()
         self.training = False
-        self.optimizer = torch.optim.Adam(self.model.parameters(), self.lr.value)  # TODO remove redundancy
-        self.scheduler = LRScheduler(self.optimizer, self.lr)
         self.sampler.reset()
 
     def step(self):
@@ -81,8 +81,11 @@ class Trainer(Entity):
                 print('NaN loss detected')
                 self.stop()
 
-            outputs['loss'].backward()
-            self.optimizer.step()
+            if outputs['loss'].item() == 0:
+                print('Zero loss detected')
+            else:
+                outputs['loss'].backward()
+                self.optimizer.step()
             self.scheduler.update()
             self.sampler.update(**outputs)
 

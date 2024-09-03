@@ -1,10 +1,10 @@
 import torch
 
-from neuraljoints.geometry.aggregate import Union, IPatchHierarchical
+from neuraljoints.geometry.aggregate import Union, IPatchHierarchical, IPatchPair
 from neuraljoints.geometry.implicit import Implicit
+from neuraljoints.neural import losses
 from neuraljoints.neural.autograd import gradient, hessian
 from neuraljoints.neural.embedding import ImplicitEmbedding
-from neuraljoints.neural.losses import MeanCurvature
 from neuraljoints.neural.model import Network
 from neuraljoints.neural.trainer import Trainer
 from neuraljoints.utils.parameters import BoolParameter, FloatParameter
@@ -35,59 +35,82 @@ class BlendingTrainer(Trainer):
 ############################  v
 
 
-class OptimizedFloatParameter(FloatParameter):
-    initial: torch.Tensor
-    value_: torch.Tensor
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    @model_validator(mode='before')
-    @classmethod
-    def pre_root(cls, values: dict) -> dict:
-        if 'value_' not in values and 'initial' in values:
-            values['initial'] = torch.tensor(values['initial'], dtype=torch.float32)
-            values['value_'] = values['initial'].clone()
-        return values
-
-    @FloatParameter.value.setter
-    def value(self, value):
-        self.value_ = torch.tensor(value, dtype=torch.float32).clamp(self.min, self.max)
-
-    def to(self, device):
-        self.value_ = self.value_.to(device)
-        return self
+class OptimizedIPatchPair(IPatchPair):
+    def blend(self, implicits, boundaries):
+        boundaries = boundaries.abs() ** self.exp     # handle exp and w0 as tensors, not params
+        b_prod = boundaries.prod(dim=0)
+        dividend, divisor = -self.w0 * b_prod, 0
+        for i in range(len(implicits)):
+            temp = b_prod / boundaries[i]
+            dividend += temp * implicits[i]
+            divisor += temp
+        return dividend / divisor
 
 
 class OptimizedIPatch(IPatchHierarchical):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.w0 = OptimizedFloatParameter(name='w0', initial=self.w0.initial,
-                                          min=self.w0.min, max=self.w0.max)
-        self.exp = OptimizedFloatParameter(name='exp', initial=self.exp.initial,
-                                           min=self.exp.min, max=self.exp.max)
+        self.w0_param: FloatParameter = self.w0     # switch parameters to tensors
+        self.exp_param: FloatParameter = self.exp
+        self.exp_param.value = 2.001
+        self.w0 = torch.tensor(self.w0_param.value, requires_grad=True)
+        self.exp = torch.tensor(self.exp_param.value, requires_grad=True)
+
         self.build_tree()
 
     def to(self, device):
-        self.w0.to(device)
-        self.exp.to(device)
+        self.w0 = torch.tensor(self.w0_param.value, requires_grad=True, device=device)
+        self.exp = torch.tensor(self.exp_param.value, requires_grad=True, device=device)
+        self.build_tree()
         return self
 
+    def update(self, training):
+        if training:
+            self.w0_param.value = self.w0.item()
+            self.exp_param.value = self.exp.item()
+            self.w0_param.changed = True
+            self.exp_param.changed = True
+        else:
+            if self.w0.item() != self.w0_param.value:
+                self.w0 = torch.tensor(self.w0_param.value)
+                self.w0_param.changed = True
+            if self.exp.item() != self.exp_param.value:
+                self.exp = torch.tensor(self.exp_param.value)
+                self.exp_param.changed = True
+            if self.w0_param.changed or self.exp_param.changed:
+                self.build_tree()
+
     def build(self):
-        self.w0.reset()
-        self.exp.reset()
+        self.w0_param.reset()
+        self.exp_param.reset()
+        self.w0_param.changed = True
+        self.exp_param.changed = True
+        self.w0 = torch.tensor(self.w0_param.value)
+        self.exp = torch.tensor(self.exp_param.value)
+        self.build_tree()
+
+    def build_tree(self):
+        self.tree = None
+        if len(self.children) > 0:
+            self.tree = self.children[0]
+            for implicit in self.children[1:]:
+                self.tree = OptimizedIPatchPair(implicit_a=self.tree, implicit_b=implicit,
+                                                offset=self.offset, exp=self.exp, w0=self.w0)
 
     def parameters(self):
-        return [self.w0.value, self.exp.value]
+        return [self.w0, self.exp]
 
 
 class IPatchTrainer(Trainer):
     def __init__(self, model: OptimizedIPatch, **kwargs):
         super().__init__(model=model, implicit=None, **kwargs)
         self.loss_fn.empty()
-        self.loss_fn.add(MeanCurvature())
+        self.loss_fn.add(losses.MeanCurvature())
+        self.detect_anomaly = BoolParameter(name='detect anomaly', initial=False)
 
     def step(self):
+        torch.autograd.set_detect_anomaly(self.detect_anomaly.value)
+
         outputs = self.sampler()
         x = outputs['x']
         x.requires_grad = self.loss_fn.req_grad or self.sampler.req_grad
@@ -102,3 +125,13 @@ class IPatchTrainer(Trainer):
 
         outputs['loss'] = self.loss_fn(**outputs)
         return outputs
+
+    def update(self):
+        super().update()
+        if torch.isnan(self.model.exp).sum() > 0:
+            print('NaN exp detected')
+            self.stop()
+        if torch.isnan(self.model.w0).sum() > 0:
+            print('NaN w0 detected')
+            self.stop()
+        self.model.update(self.training)

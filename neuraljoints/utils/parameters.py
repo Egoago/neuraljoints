@@ -14,6 +14,7 @@ class Parameter(ABC):
         self.initial = initial
         self._value = None
         self.value = copy(self.initial)
+        self.changed = False
         self.id = str(uuid.uuid4())
 
     def __float__(self):

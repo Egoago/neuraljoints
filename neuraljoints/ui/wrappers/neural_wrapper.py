@@ -166,6 +166,7 @@ class TrainerWrapper(EntityWrapper):
         imgui.SameLine()
         if imgui.Button('render') or (self.trainer.training and self.trainer.training_step % 5 == 0):
             self.changed = True
+            self.network_wrapper.changed = True
             IMPLICIT_PLANE.startup = True
 
         imgui.SameLine()
